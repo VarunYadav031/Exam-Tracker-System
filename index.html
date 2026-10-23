@@ -1,0 +1,1096 @@
+
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Exam Prep Tracker</title>
+<style>
+:root{color-scheme:light;--bg:#f6f7fb;--card:#fff;--tx:#1b1f2a;--mu:#667085;--bd:#e3e6ee;--ac:#3b5bdb;--ok:#2f9e44;--no:#e03131;--wa:#e8890c}
+:root[data-theme=dark]{color-scheme:dark;--bg:#12141a;--card:#1c1f28;--tx:#e8eaf0;--mu:#9aa1b2;--bd:#2b3040;--ac:#7c93ff;--ok:#51cf66;--no:#ff6b6b;--wa:#ffa94d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--bd);flex-wrap:wrap}
+h1{font-size:18px;margin:0}h2{font-size:20px}
+nav{display:flex;gap:6px;padding:10px 16px;overflow-x:auto}
+main{max-width:900px;margin:auto;padding:4px 16px 40px}
+button,input,select,textarea{font:inherit;color:var(--tx)}
+button{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:8px 12px;cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.on,button.pri{background:var(--ac);border-color:var(--ac);color:white}
+button.del{color:var(--no)}
+input,select,textarea{width:100%;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:9px;margin:4px 0 10px}
+label{font-size:13px;color:var(--mu);display:block}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin:10px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.stat b{display:block;font-size:25px}.stat span,.mu{font-size:13px;color:var(--mu)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row input.flex{flex:1;min-width:130px}
+.tag{font-size:12px;color:var(--mu);border:1px solid var(--bd);border-radius:20px;padding:2px 8px}
+.opt{display:block;width:100%;text-align:left;margin:7px 0;padding:11px}
+.opt.ok{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 15%,var(--card))}
+.opt.bad{border-color:var(--no);background:color-mix(in srgb,var(--no) 15%,var(--card))}
+hr{border:0;border-top:1px solid var(--bd);margin:12px 0}
+#sync{font-size:12px;color:var(--mu)}
+#dlg{display:none;position:fixed;inset:0;background:#0007;align-items:center;justify-content:center;z-index:10;padding:15px}
+#dlg .card{width:min(420px,100%)}
+</style>
+</head>
+<body>
+<header>
+  <h1>📚 Exam Prep Tracker</h1>
+  <div class="row">
+    <span id="sync">Sign in required</span>
+    <button id="login" class="pri" onclick="loginBtn()">Sign in with Google</button>
+    <button id="export" onclick="exportData()">⬇ Backup</button>
+    <button id="restore" onclick="document.getElementById('imp').click()">⬆ Restore</button>
+    <input id="imp" type="file" accept=".json" hidden onchange="importData(this)">
+  </div>
+</header>
+<nav id="nav" hidden></nav>
+<main id="app">
+  <div class="card">Firebase load ho raha hai...</div>
+</main>
+<div id="dlg"></div>
+
+<script type="module">
+import { initializeApp }
+  from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
+
+import {
+  getAuth, GoogleAuthProvider, signInWithPopup,
+  signOut as fbSignOut, onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
+
+import {
+  getFirestore, doc, getDoc, setDoc
+} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
+
+/* ---------- FIREBASE CONFIGURATION ---------- */
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDowpYuRY0fCVdecHoI73WI5eFyjcHge1Q",
+  authDomain: "exam-prep-tracker-81cd5.firebaseapp.com",
+  projectId: "exam-prep-tracker-81cd5",
+  storageBucket: "exam-prep-tracker-81cd5.firebasestorage.app",
+  messagingSenderId: "41721142555",
+  appId: "1:41721142555:web:57fb43f7b211e3dfb907be",
+  measurementId: "G-6SQQMMKTS5"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+const provider = new GoogleAuthProvider();
+
+/* ---------- APP STATE ---------- */
+
+let S = {exams:[], questions:[]};
+let view = "dash";
+let user = null;
+let loading = false;
+let saveTimer = null;
+let syncVersion = 0;
+let editId = null;
+let pre = null;
+let bulkQuestions = [];
+let practice = {ids:[], index:0, picked:null};
+let filter = {exam:"", chapter:"", topic:"", status:"", q:""};
+let revisionFilter = {exam:"", chapter:"", topic:""};
+let dialogAction = null;
+
+const TABS = [
+  ["dash","Dashboard"],["exams","My Exams"],
+  ["add","Add Question"],["bank","Question Bank"],
+  ["prac","Practice"],["rev","Revision"],["set","Settings"]
+];
+
+const $ = id => document.getElementById(id);
+const uid = () => crypto.randomUUID
+  ? crypto.randomUUID() : Math.random().toString(36).slice(2)+Date.now();
+
+const esc = value => {
+  const d = document.createElement("div");
+  d.textContent = value == null ? "" : String(value);
+  return d.innerHTML;
+};
+
+const accountKey = uidValue => "examPrep_" + uidValue;
+const localKey = () => user ? accountKey(user.uid) : "examprep";
+const userDoc = () => doc(db,"userData",user.uid);
+
+function setSync(text){ $("sync").textContent = text; }
+
+function message(text, onOK = null) {
+  dialogAction = onOK;
+  $("dlg").innerHTML = `
+    <div class="card">
+      <p>${esc(text)}</p>
+      <div class="row" style="justify-content:flex-end">
+        <button onclick="closeDialog()">OK</button>
+      </div>
+    </div>`;
+  $("dlg").style.display = "flex";
+}
+
+function confirmAction(text, callback) {
+  dialogAction = callback;
+  $("dlg").innerHTML = `
+    <div class="card">
+      <p>${esc(text)}</p>
+      <div class="row" style="justify-content:flex-end">
+        <button onclick="closeDialog()">Cancel</button>
+        <button class="pri" onclick="confirmDialog()">Confirm</button>
+      </div>
+    </div>`;
+  $("dlg").style.display = "flex";
+}
+
+window.closeDialog = () => {
+  $("dlg").style.display = "none";
+  dialogAction = null;
+};
+window.confirmDialog = () => {
+  const fn = dialogAction;
+  window.closeDialog();
+  if(fn) fn();
+};
+
+/* ---------- LOCAL + FIRESTORE STORAGE ---------- */
+
+function saveLocal() {
+  try {
+    localStorage.setItem(localKey(),JSON.stringify(S));
+  } catch(e) {
+    console.warn("Local save failed",e);
+    setSync("Local storage full; backup recommended");
+  }
+}
+
+function readLocal(key) {
+  try {
+    const value = localStorage.getItem(key);
+    return value ? JSON.parse(value) : null;
+  } catch(e) {
+    return null;
+  }
+}
+
+function validData(data) {
+  return data && Array.isArray(data.exams) &&
+    Array.isArray(data.questions);
+}
+
+function normalizeData(data) {
+  if(!validData(data)) return {exams:[],questions:[]};
+
+  data.exams.forEach(e => {
+    if(!Array.isArray(e.chapters)) e.chapters = [];
+    e.chapters.forEach(c => {
+      if(!Array.isArray(c.topics)) c.topics = [];
+    });
+  });
+
+  data.questions.forEach(q => {
+    q.opts = Array.isArray(q.opts) ? q.opts : ["","","",""];
+    while(q.opts.length < 4) q.opts.push("");
+    q.attempts = Number(q.attempts || 0);
+    q.correct = Number(q.correct || 0);
+    q.wrong = Number(q.wrong || 0);
+    q.bm = !!q.bm;
+    q.revise = !!q.revise;
+  });
+
+  return data;
+}
+
+function scheduleSave() {
+  S.updated = Date.now();
+  saveLocal();
+
+  if(!user || loading) return;
+
+  clearTimeout(saveTimer);
+  const version = ++syncVersion;
+  setSync("Saving to Firebase...");
+
+  saveTimer = setTimeout(async () => {
+    if(!user || loading || version !== syncVersion) return;
+
+    const owner = user.uid;
+    const snapshot = JSON.parse(JSON.stringify(S));
+
+    try {
+      await setDoc(doc(db,"userData",owner),{
+        state:snapshot,
+        updated:Date.now()
+      });
+
+      if(user && user.uid === owner && version === syncVersion) {
+        setSync("☁️ Firebase saved");
+      }
+    } catch(e) {
+      console.error("Firestore save error:",e);
+      if(user && user.uid === owner) {
+        setSync("⚠ Cloud save failed; local copy retained");
+      }
+    }
+  },700);
+}
+
+function save(){ scheduleSave(); }
+
+window.addEventListener("online", () => {
+  if(user) scheduleSave();
+});
+
+/* ---------- AUTHENTICATION ---------- */
+
+window.loginBtn = async function() {
+  if(auth.currentUser) {
+    try {
+      await fbSignOut(auth);
+    } catch(e) {
+      message("Sign out failed: " + e.message);
+    }
+    return;
+  }
+
+  try {
+    await signInWithPopup(auth,provider);
+  } catch(e) {
+    console.error(e);
+    message("Google login failed: " + e.message);
+  }
+};
+
+onAuthStateChanged(auth, async firebaseUser => {
+  clearTimeout(saveTimer);
+  syncVersion++;
+  user = firebaseUser;
+  loading = true;
+
+  $("login").textContent = user ? "Sign out" : "Sign in with Google";
+  $("login").className = user ? "" : "pri";
+  $("export").hidden = !user;
+  $("restore").hidden = !user;
+
+  if(!user) {
+    S = {exams:[],questions:[]};
+    loading = false;
+    render();
+    setSync("Sign in required");
+    return;
+  }
+
+  setSync("Loading your cloud data...");
+
+  try {
+    const ref = userDoc();
+    const snap = await getDoc(ref);
+
+    if(!user || auth.currentUser?.uid !== user.uid) return;
+
+    if(snap.exists() && validData(snap.data().state)) {
+      S = normalizeData(snap.data().state);
+    } else {
+      // Restore this account's local copy first.
+      const ownLocal = readLocal(accountKey(user.uid));
+
+      if(validData(ownLocal)) {
+        S = normalizeData(ownLocal);
+      } else {
+        // One-time migration of the old single-user app's local data.
+        const oldLocal = readLocal("examprep");
+        S = validData(oldLocal)
+          ? normalizeData(oldLocal)
+          : {exams:[],questions:[]};
+      }
+
+      await setDoc(ref,{state:S,updated:Date.now()});
+    }
+
+    saveLocal();
+    setSync("☁️ Firebase connected");
+  } catch(e) {
+    console.error("Firebase load error:",e);
+    S = normalizeData(readLocal(localKey()) || {exams:[],questions:[]});
+    setSync("⚠ Cloud load failed; showing local data");
+  } finally {
+    loading = false;
+    render();
+  }
+});
+
+/* ---------- NAVIGATION + HELPERS ---------- */
+
+function go(tab) {
+  view = tab;
+  editId = null;
+  pre = null;
+  render();
+}
+window.go = go;
+
+function getExam(id) {
+  return S.exams.find(e => e.id === id);
+}
+
+function getChapter(examId, chapterId) {
+  const e = getExam(examId);
+  return e && e.chapters.find(c => c.id === chapterId);
+}
+
+function getTopic(chapter, topicId) {
+  return chapter && (chapter.topics || []).find(t => t.id === topicId);
+}
+
+function questionLocation(q) {
+  const e = getExam(q.examId);
+  const c = getChapter(q.examId,q.chapterId);
+  const t = getTopic(c,q.topicId);
+  return [e && e.name,c && c.name,t && t.name].filter(Boolean).join(" › ");
+}
+
+function status(q) {
+  if(!q.attempts) return "new";
+  if(!q.lastOk) return "wrong";
+  return q.revise ? "revise" : "done";
+}
+
+const STATUS = {
+  new:"Not attempted",done:"Correct",
+  wrong:"Incorrect",revise:"Revise again"
+};
+
+function btn(label, action, cls="") {
+  return `<button class="${cls}" onclick="${action}">${label}</button>`;
+}
+
+/* ---------- RENDER ---------- */
+
+function render() {
+  if(!user) {
+    $("nav").hidden = true;
+    $("app").innerHTML = `
+      <div class="card">
+        <h2>📚 Exam Prep Tracker</h2>
+        <p>Google account se sign in karke apne exams, MCQs aur practice progress ko Firebase par save karein.</p>
+        <p class="mu">Aapka data har account ke liye alag rakha jata hai.</p>
+        <button class="pri" onclick="loginBtn()">Sign in with Google</button>
+      </div>`;
+    return;
+  }
+
+  $("nav").hidden = false;
+  $("nav").innerHTML = TABS.map(([id,label]) =>
+    `<button class="${view===id?"on":""}" onclick="go('${id}')">${label}</button>`
+  ).join("");
+
+  const pages = {
+    dash:dashboard, exams:examsPage, add:addPage,
+    bank:bankPage, prac:practicePage, rev:revisionPage,
+    set:settingsPage
+  };
+
+  $("app").innerHTML = (pages[view] || dashboard)();
+}
+
+function dashboard() {
+  const Q = S.questions;
+  const attempted = Q.filter(q=>q.attempts).length;
+  const correct = Q.filter(q=>q.attempts && q.lastOk).length;
+  const incorrect = Q.filter(q=>q.attempts && !q.lastOk).length;
+  const revise = Q.filter(q=>status(q)==="wrong"||status(q)==="revise").length;
+
+  let h = `<div class="grid">`;
+  [
+    ["Exams",S.exams.length],["Questions",Q.length],
+    ["Attempted",attempted],["Not attempted",Q.length-attempted],
+    ["Last correct",correct],["Last incorrect",incorrect],
+    ["To revise",revise]
+  ].forEach(([label,value]) => {
+    h += `<div class="card stat"><b>${value}</b><span>${label}</span></div>`;
+  });
+  h += `</div><div class="card"><b>Chapter-wise accuracy</b>`;
+
+  let found = false;
+  S.exams.forEach(e => e.chapters.forEach(c => {
+    const qs = Q.filter(q=>q.examId===e.id && q.chapterId===c.id);
+    if(!qs.length) return;
+    found = true;
+    const attempts = qs.reduce((n,q)=>n+q.attempts,0);
+    const correctAnswers = qs.reduce((n,q)=>n+q.correct,0);
+    const accuracy = attempts ? Math.round(correctAnswers/attempts*100)+"%" : "Not started";
+    h += `<hr><div class="row" style="justify-content:space-between">
+      <span>${esc(e.name)} · ${esc(c.name)}</span>
+      <span class="mu">${qs.length} Qs · ${accuracy}</span>
+    </div>`;
+  }));
+
+  if(!found) h += `<p class="mu">My Exams mein exam aur chapter add karke shuru karein.</p>`;
+  return h+"</div>";
+}
+
+/* ---------- EXAMS / CHAPTERS / TOPICS ---------- */
+
+function examsPage() {
+  let h = `<div class="card">
+    <label>New exam name</label>
+    <div class="row">
+      <input id="examName" class="flex" placeholder="Bihar STET Computer Science">
+      <button class="pri" onclick="addExam()">Add exam</button>
+    </div>
+  </div>`;
+
+  S.exams.forEach(e => {
+    h += `<div class="card">
+      <div class="row" style="justify-content:space-between">
+        <b>${esc(e.name)}</b>
+        <span>${btn("Rename",`renameExam('${e.id}')`)}
+        ${btn("Delete",`deleteExam('${e.id}')`,"del")}</span>
+      </div>`;
+
+    e.chapters.forEach(c => {
+      const count = S.questions.filter(q=>q.chapterId===c.id).length;
+      h += `<hr><div class="row" style="justify-content:space-between">
+        <b>${esc(c.name)} <span class="mu">(${count} Qs)</span></b>
+        <span>${btn("Rename",`renameChapter('${e.id}','${c.id}')`)}
+        ${btn("Delete",`deleteChapter('${e.id}','${c.id}')`,"del")}</span>
+      </div>`;
+
+      (c.topics||[]).forEach(t => {
+        const n = S.questions.filter(q=>q.topicId===t.id).length;
+        h += `<div class="row" style="justify-content:space-between;margin:8px 0 8px 12px">
+          <span>• ${esc(t.name)} <span class="mu">(${n})</span></span>
+          <span>${btn("+ Question",`addFor('${e.id}','${c.id}','${t.id}')`,"pri")}
+          ${btn("Rename",`renameTopic('${e.id}','${c.id}','${t.id}')`)}
+          ${btn("Delete",`deleteTopic('${e.id}','${c.id}','${t.id}')`,"del")}</span>
+        </div>`;
+      });
+
+      h += `<div class="row">
+        <input id="topic-${c.id}" class="flex" placeholder="New topic name">
+        <button onclick="addTopic('${e.id}','${c.id}')">Add topic</button>
+      </div>`;
+    });
+
+    h += `<hr><div class="row">
+      <input id="chapter-${e.id}" class="flex" placeholder="New chapter name">
+      <button onclick="addChapter('${e.id}')">Add chapter</button>
+    </div></div>`;
+  });
+
+  return h;
+}
+
+window.addExam = function() {
+  const name = $("examName").value.trim();
+  if(!name) return message("Exam ka naam daalein.");
+  S.exams.push({id:uid(),name,chapters:[]});
+  save();render();
+};
+
+window.addChapter = function(eid) {
+  const input = $("chapter-"+eid);
+  const name = input.value.trim();
+  if(!name) return message("Chapter ka naam daalein.");
+  getExam(eid).chapters.push({id:uid(),name,topics:[]});
+  save();render();
+};
+
+window.addTopic = function(eid,cid) {
+  const input = $("topic-"+cid);
+  const name = input.value.trim();
+  if(!name) return message("Topic ka naam daalein.");
+  const c = getChapter(eid,cid);
+  c.topics ||= [];
+  c.topics.push({id:uid(),name});
+  save();render();
+};
+
+function renamePrompt(title,oldValue,callback) {
+  $("dlg").innerHTML = `
+    <div class="card">
+      <label>${esc(title)}</label>
+      <input id="renameValue" value="${esc(oldValue)}">
+      <div class="row">
+        <button onclick="closeDialog()">Cancel</button>
+        <button class="pri" onclick="submitRename()">Save</button>
+      </div>
+    </div>`;
+  dialogAction = () => {
+    const value = $("renameValue").value.trim();
+    if(value) callback(value);
+  };
+  $("dlg").style.display = "flex";
+}
+window.submitRename = () => {
+  const value = $("renameValue").value.trim();
+  const fn = dialogAction;
+  window.closeDialog();
+  if(value && fn) fn(value);
+};
+
+window.renameExam = id => {
+  const e = getExam(id);
+  renamePrompt("Exam name",e.name,v=>{e.name=v;save();render();});
+};
+window.renameChapter = (eid,cid) => {
+  const c = getChapter(eid,cid);
+  renamePrompt("Chapter name",c.name,v=>{c.name=v;save();render();});
+};
+window.renameTopic = (eid,cid,tid) => {
+  const t = getTopic(getChapter(eid,cid),tid);
+  renamePrompt("Topic name",t.name,v=>{t.name=v;save();render();});
+};
+
+window.deleteExam = id => confirmAction(
+  "Exam aur uske saare chapters, topics aur questions delete honge. Continue?",
+  ()=>{
+    S.exams = S.exams.filter(e=>e.id!==id);
+    S.questions = S.questions.filter(q=>q.examId!==id);
+    save();render();
+  }
+);
+
+window.deleteChapter = (eid,cid) => confirmAction(
+  "Chapter aur uske questions delete honge. Continue?",
+  ()=>{
+    getExam(eid).chapters = getExam(eid).chapters.filter(c=>c.id!==cid);
+    S.questions = S.questions.filter(q=>q.chapterId!==cid);
+    save();render();
+  }
+);
+
+window.deleteTopic = (eid,cid,tid) => confirmAction(
+  "Topic aur uske questions delete honge. Continue?",
+  ()=>{
+    const c = getChapter(eid,cid);
+    c.topics = c.topics.filter(t=>t.id!==tid);
+    S.questions = S.questions.filter(q=>q.topicId!==tid);
+    save();render();
+  }
+);
+
+/* ---------- ADD / EDIT QUESTIONS ---------- */
+
+window.addFor = (eid,cid,tid) => {
+  pre = {examId:eid,chapterId:cid,topicId:tid};
+  editId = null;go("add");
+};
+
+function addPage() {
+  if(!S.exams.length) return `<div class="card">Pehle My Exams mein exam aur chapter add karein.</div>`;
+
+  const old = editId ? S.questions.find(q=>q.id===editId) : null;
+  const q = old || {
+    q:"",opts:["","","",""],ans:0,exp:"",src:"",note:"",
+    examId:(pre&&pre.examId)||S.exams[0].id,
+    chapterId:(pre&&pre.chapterId)||"",
+    topicId:(pre&&pre.topicId)||""
+  };
+
+  const selectedExam = getExam(q.examId) || S.exams[0];
+  const selectedChapter = getChapter(selectedExam.id,q.chapterId) ||
+    selectedExam.chapters[0];
+  const topics = selectedChapter?.topics || [];
+
+  let h = `<div class="card">
+    <b>${old?"Edit question":"Add question"}</b>
+    <label>Exam</label>
+    <select id="qExam" onchange="refreshQuestionSelects()">`;
+
+  S.exams.forEach(e=>{
+    h += `<option value="${e.id}" ${e.id===selectedExam.id?"selected":""}>${esc(e.name)}</option>`;
+  });
+
+  h += `</select><label>Chapter</label><select id="qChapter" onchange="refreshQuestionSelects()">`;
+
+  selectedExam.chapters.forEach(c=>{
+    h += `<option value="${c.id}" ${selectedChapter&&c.id===selectedChapter.id?"selected":""}>${esc(c.name)}</option>`;
+  });
+
+  h += `</select><label>Topic</label><select id="qTopic">`;
+
+  topics.forEach(t=>{
+    h += `<option value="${t.id}" ${t.id===q.topicId?"selected":""}>${esc(t.name)}</option>`;
+  });
+
+  h += `</select>
+    <label>Question</label><textarea id="qText" rows="3">${esc(q.q)}</textarea>`;
+
+  ["A","B","C","D"].forEach((letter,i)=>{
+    h += `<label>Option ${letter}</label><input id="option${i}" value="${esc(q.opts[i]||"")}">`;
+  });
+
+  h += `<label>Correct answer</label><select id="qAnswer">`;
+  ["A","B","C","D"].forEach((letter,i)=>{
+    h += `<option value="${i}" ${q.ans===i?"selected":""}>${letter}</option>`;
+  });
+
+  h += `</select><label>Explanation</label>
+    <textarea id="qExplanation" rows="2">${esc(q.exp)}</textarea>
+    <label>Source / year</label><input id="qSource" value="${esc(q.src)}" placeholder="Bihar STET 2025">
+    <label>My notes</label><textarea id="qNotes" rows="2">${esc(q.note)}</textarea>
+    <div class="row"><button class="pri" onclick="saveQuestion()">${old?"Update question":"Save question"}</button>
+    ${old?btn("Cancel","go('bank')"):""}</div>
+  </div>`;
+
+  if(!old) {
+    h += `<div class="card">
+      <b>Bulk import MCQs</b>
+      <p class="mu">Questions ko 1., 2. se number karein. A-D options alag lines par likhein aur sahi option ke baad ✅ lagayein; ya Answer: B likhein. Explanation optional hai.</p>
+      <textarea id="bulkText" rows="9" placeholder="1. Binary 1010 ka decimal kya hai?&#10;&#10;A. 8&#10;B. 10 ✅&#10;C. 12&#10;D. 14&#10;&#10;2. Agla question?&#10;&#10;A. Pehla&#10;B. Doosra ✅&#10;C. Teesra&#10;D. Chautha"></textarea>
+      <button onclick="previewBulk()">Preview questions</button>
+      <div id="bulkPreview"></div>
+    </div>`;
+  }
+
+  return h;
+}
+
+window.refreshQuestionSelects = function() {
+  const e = getExam($("qExam").value);
+  $("qChapter").innerHTML = (e?.chapters||[]).map(c=>
+    `<option value="${c.id}">${esc(c.name)}</option>`
+  ).join("");
+  refreshTopics();
+};
+
+function refreshTopics() {
+  const c = getChapter($("qExam").value,$("qChapter").value);
+  $("qTopic").innerHTML = (c?.topics||[]).map(t=>
+    `<option value="${t.id}">${esc(t.name)}</option>`
+  ).join("");
+}
+window.refreshTopics = refreshTopics;
+
+window.saveQuestion = function() {
+  const examId = $("qExam").value;
+  const chapterId = $("qChapter").value;
+  const topicId = $("qTopic").value;
+  const text = $("qText").value.trim();
+  const opts = [0,1,2,3].map(i=>$("option"+i).value.trim());
+
+  if(!text || opts.some(v=>!v) || !chapterId || !topicId) {
+    return message("Question, chapter, topic aur chaaron options bharna zaroori hai.");
+  }
+
+  const data = {
+    examId,chapterId,topicId,q:text,opts,
+    ans:Number($("qAnswer").value),
+    exp:$("qExplanation").value.trim(),
+    src:$("qSource").value.trim(),
+    note:$("qNotes").value.trim()
+  };
+
+  if(editId) {
+    Object.assign(S.questions.find(q=>q.id===editId),data);
+    editId = null;
+    save();go("bank");
+  } else {
+    S.questions.push({
+      id:uid(),bm:false,attempts:0,correct:0,wrong:0,
+      last:null,lastOk:false,revise:false,...data
+    });
+    pre = {examId,chapterId,topicId};
+    save();render();
+    setSync("Question added; saving...");
+  }
+};
+
+/* ---------- BULK IMPORT ---------- */
+
+function parseBlock(block) {
+  const lines = block.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  if(!lines.length) return null;
+
+  let q = "", explanation = "", answer = null;
+  const options = [];
+
+  for(const line of lines) {
+    let m;
+    if((m=line.match(/^(?:Explanation|व्याख्या)\s*[:：-]\s*(.*)$/i))) {
+      explanation = m[1]; continue;
+    }
+    if((m=line.match(/^(?:Correct answer|Answer|Ans|Sahi jawab|Sahi uttar|उत्तर|सही उत्तर)\s*[:：-]\s*(?:Option\s*)?([A-D])/i))) {
+      answer = "ABCD".indexOf(m[1].toUpperCase()); continue;
+    }
+    if((m=line.match(/^(?:Option\s*)?([A-D])\s*[.)\]:-]\s*(.*)$/i))) {
+      const label=m[1].toUpperCase();
+      const isCorrect=/[✅✔✓]/.test(m[2]);
+      if(isCorrect) answer="ABCD".indexOf(label);
+      options.push({label,text:m[2].replace(/[✅✔✓]/g,"").trim()});
+      continue;
+    }
+    if(!options.length) q += (q?" ":"") + line.replace(/^(?:(?:Question|प्रश्न)\s*)?\d+[.)]\s*/i,"");
+    else options[options.length-1].text += " " + line;
+  }
+
+  if(options.length!==4 || !q.trim() || options.some((o,i)=>o.label!=="ABCD"[i]||!o.text.trim()) || answer===null) return null;
+  return {q:q.trim(),opts:options.map(o=>o.text.trim()),ans:answer,exp:explanation};
+}
+
+window.previewBulk = function() {
+  const raw = $("bulkText").value.trim();
+  if(!raw) return message("Pehle MCQs paste karein.");
+
+  const numberedQuestion=/^\s*\d+\s*[.)]\s+\S/m;
+  const blocks = numberedQuestion.test(raw)
+    ? raw.split(/(?=^\s*\d+\s*[.)]\s+\S)/m).filter(s=>s.trim())
+    : raw.split(/\r?\n\s*\r?\n+/).filter(s=>s.trim());
+  const parsed = blocks.map(parseBlock);
+
+  if(!parsed.length || parsed.some(q=>!q)) {
+    bulkQuestions = [];
+    $("bulkPreview").innerHTML = `<p class="mu">Format samajh nahi aaya. Har question ko 1., 2. se shuru karein ya blank line se alag karein. A-D options dein, aur sahi option ke baad ✅ lagayein ya Answer: B likhein.</p>`;
+    return;
+  }
+
+  bulkQuestions = parsed;
+  $("bulkPreview").innerHTML = `
+    <p>${parsed.length} questions ready</p>
+    ${parsed.map((q,i)=>`<div class="card"><b>${i+1}. ${esc(q.q)}</b><p class="mu">Correct answer: ${"ABCD"[q.ans]}</p></div>`).join("")}
+    <button class="pri" onclick="saveBulk()">Save all questions</button>`;
+};
+
+window.saveBulk = function() {
+  if(!bulkQuestions.length) return;
+  const examId = $("qExam").value;
+  const chapterId = $("qChapter").value;
+  const topicId = $("qTopic").value;
+  if(!examId || !chapterId || !topicId) return message("Exam, chapter aur topic select karein.");
+
+  const count = bulkQuestions.length;
+  bulkQuestions.forEach(q=>S.questions.push({
+    id:uid(),bm:false,attempts:0,correct:0,wrong:0,
+    last:null,lastOk:false,revise:false,
+    examId,chapterId,topicId,...q,src:"",note:""
+  }));
+
+  bulkQuestions = [];
+  save();render();
+  setSync(count+" questions added; saving...");
+};
+
+/* ---------- QUESTION BANK / FILTERS ---------- */
+
+function filteredQuestions() {
+  return S.questions.filter(q=>{
+    if(filter.exam && q.examId!==filter.exam) return false;
+    if(filter.chapter && q.chapterId!==filter.chapter) return false;
+    if(filter.topic && q.topicId!==filter.topic) return false;
+    if(filter.status==="bm" && !q.bm) return false;
+    if(filter.status==="attempted" && !q.attempts) return false;
+    if(["new","wrong","revise","done"].includes(filter.status) && status(q)!==filter.status) return false;
+    const haystack = (q.q+" "+q.note+" "+q.src).toLowerCase();
+    if(filter.q && !haystack.includes(filter.q.toLowerCase())) return false;
+    return true;
+  });
+}
+
+function filterControls() {
+  const selectedExam=getExam(filter.exam);
+  const chapters=selectedExam ? selectedExam.chapters : [];
+  const selectedChapter=chapters.find(c=>c.id===filter.chapter);
+  const topics=selectedChapter ? (selectedChapter.topics||[]) : [];
+  return `<div class="card">
+    <label>Exam filter</label><select id="filterExam" onchange="changeFilter('exam',this.value)">
+      <option value="">All exams</option>
+      ${S.exams.map(e=>`<option value="${e.id}" ${filter.exam===e.id?"selected":""}>${esc(e.name)}</option>`).join("")}
+    </select>
+    <label>Chapter filter</label><select id="filterChapter" ${filter.exam?"":"disabled"} onchange="changeFilter('chapter',this.value)">
+      <option value="">All chapters</option>
+      ${chapters.map(c=>`<option value="${c.id}" ${filter.chapter===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}
+    </select>
+    <label>Topic filter</label><select id="filterTopic" ${filter.chapter?"":"disabled"} onchange="changeFilter('topic',this.value)">
+      <option value="">All topics</option>
+      ${topics.map(t=>`<option value="${t.id}" ${filter.topic===t.id?"selected":""}>${esc(t.name)}</option>`).join("")}
+    </select>
+    <label>Status filter</label><select id="filterStatus" onchange="changeFilter('status',this.value)">
+      ${[["","All status"],["new","Not attempted"],["attempted","Attempted"],["wrong","Incorrect"],["revise","Revise again"],["done","Correct"],["bm","Bookmarked"]].map(([v,l])=>`<option value="${v}" ${filter.status===v?"selected":""}>${l}</option>`).join("")}
+    </select>
+    <label>Search questions</label><input value="${esc(filter.q)}" placeholder="Search question, notes or source" onchange="changeFilter('q',this.value)">
+  </div>`;
+}
+window.changeFilter = (key,value) => {
+  filter[key] = value;
+  if(key==="exam") {
+    filter.chapter="";
+    filter.topic="";
+  } else if(key==="chapter") {
+    filter.topic="";
+  }
+  render();
+};
+
+function bankPage() {
+  const list = filteredQuestions();
+  let h = filterControls()+`<div class="row"><span class="mu">${list.length} questions</span>
+    ${list.length?btn("Practice these","startPractice()","pri"):""}</div>`;
+
+  list.forEach(q=>{
+    h += `<div class="card">
+      <b>${esc(q.q)}</b>
+      <div class="row" style="margin-top:8px">
+        <span class="tag">${esc(questionLocation(q))}</span>
+        <span class="tag">${STATUS[status(q)]}</span>
+        ${q.src?`<span class="tag">${esc(q.src)}</span>`:""}
+        <span class="tag">Attempts: ${q.attempts}</span>
+      </div>
+      <div class="row" style="margin-top:8px">
+        ${btn(q.bm?"★ Bookmarked":"☆ Bookmark",`toggleBookmark('${q.id}')`)}
+        ${btn("Edit",`editQuestion('${q.id}')`)}
+        ${btn("Delete",`deleteQuestion('${q.id}')`,"del")}
+      </div>
+    </div>`;
+  });
+
+  return h;
+}
+
+window.toggleBookmark = id => {
+  const q = S.questions.find(q=>q.id===id);
+  if(!q) return;
+  q.bm = !q.bm;save();render();
+};
+window.editQuestion = id => {
+  editId = id;pre = null;go("add");
+};
+window.deleteQuestion = id => confirmAction("Delete this question?",()=>{
+  S.questions = S.questions.filter(q=>q.id!==id);
+  save();render();
+});
+
+/* ---------- PRACTICE ---------- */
+
+window.startPractice = function() {
+  practice = {ids:filteredQuestions().map(q=>q.id),index:0,picked:null};
+  go("prac");
+};
+window.startPracticeIds = ids => {
+  practice = {ids,index:0,picked:null};
+  go("prac");
+};
+
+function practicePage() {
+  if(!practice.ids.length) {
+    return `<div class="card">Question Bank mein questions add karein, phir Practice start karein.</div>`;
+  }
+
+  const q = S.questions.find(q=>q.id===practice.ids[practice.index]);
+  if(!q) return `<div class="card">Question not found.</div>`;
+
+  let h = `<p class="mu">Question ${practice.index+1} / ${practice.ids.length}</p>
+    <div class="card">
+    <span class="tag">${esc(questionLocation(q))}</span>
+    <p><b>${esc(q.q)}</b></p>`;
+
+  q.opts.forEach((o,i)=>{
+    let cls = "";
+    if(practice.picked!==null) {
+      if(i===q.ans) cls=" ok";
+      else if(i===practice.picked) cls=" bad";
+    }
+    h += `<button class="opt${cls}" ${practice.picked!==null?"disabled":""} onclick="pickAnswer(${i})">${"ABCD"[i]}. ${esc(o)}</button>`;
+  });
+
+  if(practice.picked!==null) {
+    const correct = practice.picked===q.ans;
+    h += `<p style="color:var(--${correct?"ok":"no"})"><b>${correct?"Correct ✓":"Incorrect ✗"} — Answer: ${"ABCD"[q.ans]}</b></p>`;
+    if(q.exp) h += `<p>${esc(q.exp)}</p>`;
+    h += `<label>My notes</label><textarea id="practiceNote">${esc(q.note)}</textarea>
+      <div class="row">
+        <button onclick="savePracticeNote()">Save note</button>
+        ${btn(q.revise?"✓ Marked for revision":"Mark for revision",`toggleRevision('${q.id}')`)}
+        ${btn(q.bm?"★ Bookmarked":"☆ Bookmark",`toggleBookmark('${q.id}')`)}
+        ${btn(practice.index+1<practice.ids.length?"Next →":"Finish", "nextPractice()","pri")}
+      </div>`;
+  }
+
+  return h+"</div>";
+}
+
+window.pickAnswer = function(i) {
+  if(practice.picked!==null) return;
+  const q = S.questions.find(q=>q.id===practice.ids[practice.index]);
+  if(!q) return;
+
+  practice.picked = i;
+  const correct = i===q.ans;
+  q.attempts++;
+  if(correct) q.correct++;
+  else q.wrong++;
+  q.lastOk = correct;
+  q.last = new Date().toISOString().slice(0,10);
+  save();render();
+};
+
+window.savePracticeNote = function() {
+  const q = S.questions.find(q=>q.id===practice.ids[practice.index]);
+  if(q) {
+    q.note = $("practiceNote").value.trim();
+    save();message("Note saved.");
+  }
+};
+
+window.toggleRevision = id => {
+  const q = S.questions.find(q=>q.id===id);
+  if(q) {
+    q.revise = !q.revise;
+    save();render();
+  }
+};
+
+window.nextPractice = function() {
+  if(practice.index+1 < practice.ids.length) {
+    practice.index++;
+    practice.picked = null;
+    render();
+  } else {
+    practice = {ids:[],index:0,picked:null};
+    go("dash");
+  }
+};
+
+/* ---------- REVISION ---------- */
+
+window.setRevisionFilter = function(field,value) {
+  revisionFilter[field]=value;
+  if(field==="exam") {
+    revisionFilter.chapter="";
+    revisionFilter.topic="";
+  } else if(field==="chapter") {
+    revisionFilter.topic="";
+  }
+  render();
+};
+
+function revisionPage() {
+  const revisionQuestions=S.questions.filter(q=>status(q)==="wrong"||status(q)==="revise");
+  const exams=S.exams.filter(e=>revisionQuestions.some(q=>q.examId===e.id));
+  const selectedExam=exams.find(e=>e.id===revisionFilter.exam);
+  const chapters=selectedExam
+    ? selectedExam.chapters.filter(c=>revisionQuestions.some(q=>q.examId===selectedExam.id&&q.chapterId===c.id))
+    : [];
+  const selectedChapter=chapters.find(c=>c.id===revisionFilter.chapter);
+  const topics=selectedExam&&selectedChapter
+    ? (selectedChapter.topics||[]).filter(t=>revisionQuestions.some(q=>q.examId===selectedExam.id&&q.chapterId===selectedChapter.id&&q.topicId===t.id))
+    : [];
+
+  if(revisionFilter.exam&&!selectedExam) revisionFilter={exam:"",chapter:"",topic:""};
+  else if(revisionFilter.chapter&&!selectedChapter) {
+    revisionFilter.chapter="";
+    revisionFilter.topic="";
+  } else if(revisionFilter.topic&&!topics.some(t=>t.id===revisionFilter.topic)) {
+    revisionFilter.topic="";
+  }
+
+  const list=revisionQuestions.filter(q=>
+    (!revisionFilter.exam||q.examId===revisionFilter.exam)&&
+    (!revisionFilter.chapter||q.chapterId===revisionFilter.chapter)&&
+    (!revisionFilter.topic||q.topicId===revisionFilter.topic)
+  );
+  let h=`<div class="card">
+    <b>Revision ko chun kar practice karein</b>
+    <label>Exam</label>
+    <select id="revisionExam" onchange="setRevisionFilter('exam',this.value)">
+      <option value="">All exams</option>
+      ${exams.map(e=>`<option value="${esc(e.id)}" ${revisionFilter.exam===e.id?"selected":""}>${esc(e.name)}</option>`).join("")}
+    </select>
+    <label>Chapter</label>
+    <select id="revisionChapter" ${revisionFilter.exam?"":"disabled"} onchange="setRevisionFilter('chapter',this.value)">
+      <option value="">All chapters</option>
+      ${chapters.map(c=>`<option value="${esc(c.id)}" ${revisionFilter.chapter===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}
+    </select>
+    <label>Topic</label>
+    <select id="revisionTopic" ${revisionFilter.chapter?"":"disabled"} onchange="setRevisionFilter('topic',this.value)">
+      <option value="">All topics</option>
+      ${topics.map(t=>`<option value="${esc(t.id)}" ${revisionFilter.topic===t.id?"selected":""}>${esc(t.name)}</option>`).join("")}
+    </select>
+    <div class="row"><span class="mu">${list.length} questions for revision</span>
+      ${list.length?btn("Practice selected","startPracticeIds("+JSON.stringify(list.map(q=>q.id))+")","pri"):""}
+    </div>
+  </div>`;
+
+  if(!revisionQuestions.length) return h+`<div class="card">Abhi revision ke liye questions nahi hain. Practice mein galat jawab dein ya question par “Mark for revision” dabayein.</div>`;
+  if(!list.length) return h+`<div class="card">Is selection mein revision questions nahi hain.</div>`;
+  h+=`<div class="card"><b>Selected revision questions</b>`;
+  list.forEach(q=>{
+    h+=`<div style="padding:10px 0;border-top:1px solid var(--bd)">
+      <div>${esc(q.q)}</div>
+      <div class="row"><span class="tag">${esc(questionLocation(q)||"Uncategorized")}</span>
+        <span class="tag">${STATUS[status(q)]}</span>
+        ${btn("Practice",`startPracticeIds(['${q.id}'])`)}
+        ${btn(q.revise?"Unmark revision":"Mark revision",`toggleRevision('${q.id}')`)}
+      </div>
+    </div>`;
+  });
+  return h+`</div>`;
+}
+
+/* ---------- SETTINGS ---------- */
+
+function settingsPage() {
+  return `<div class="card">
+    <h3>Account</h3>
+    <p>${esc(user?.email||"")}</p>
+    <p class="mu">Signed-in account ka data Firestore ke userData/${esc(user?.uid||"")} document mein save hota hai.</p>
+    <button class="pri" onclick="loginBtn()">Sign out</button>
+  </div>
+  <div class="card">
+    <h3>Appearance</h3>
+    <button onclick="toggleTheme()">Toggle light / dark theme</button>
+  </div>
+  <div class="card">
+    <h3>Data backup</h3>
+    <p class="mu">Cloud sync ke alawa JSON backup laptop par save kar sakte hain.</p>
+    <button onclick="exportData()">Download backup</button>
+    <button onclick="document.getElementById('imp').click()">Restore backup</button>
+  </div>`;
+}
+
+window.toggleTheme = function() {
+  document.documentElement.dataset.theme =
+    document.documentElement.dataset.theme==="dark" ? "light" : "dark";
+};
+
+/* ---------- EXPORT / RESTORE ---------- */
+
+window.exportData = function() {
+  if(!user) return message("Pehle sign in karein.");
+  const blob = new Blob([JSON.stringify(S,null,2)],{type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "exam-prep-backup.json";
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
+
+window.importData = function(input) {
+  const file = input.files[0];
+  if(!file) return;
+
+  file.text().then(text=>{
+    const data = JSON.parse(text);
+    if(!validData(data)) throw new Error("Invalid backup");
+    confirmAction("Current data replace ho jayega. Restore karein?",()=>{
+      S = normalizeData(data);
+      save();render();
+      setSync("Backup restored; syncing...");
+    });
+  }).catch(()=>{
+    message("Backup file valid nahi hai.");
+  }).finally(()=>{
+    input.value = "";
+  });
+};
+
+/* ---------- INITIAL RENDER ---------- */
+
+render();
+</script>
+</body>
+</html>
