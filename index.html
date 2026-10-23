@@ -60,7 +60,7 @@ import { initializeApp }
   from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
 
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup,
+  getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult,
   signOut as fbSignOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
 
@@ -432,18 +432,30 @@ window.connectDrive = async function() {
 
 async function authorizeDrive() {
   try {
-    const result = await signInWithPopup(auth,provider);
+    await signInWithRedirect(auth,provider);
+  } catch(e) {
+    console.error(e);
+    setSync("⚠ Google Drive sync failed; local data is kept");
+    message("Google Drive connection failed: " + e.message);
+  }
+}
+
+async function handleDriveRedirect() {
+  try {
+    const result = await getRedirectResult(auth);
+    if(!result) return;
+
     await waitForAuthUser(result.user.uid);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if(!credential?.accessToken)
-      throw new Error("Google did not return Drive access. Please try connecting again.");
+      throw new Error("Google did not return Drive access. Please connect Google Drive again.");
     driveAccessToken = credential.accessToken;
     driveTokenExpiresAt = Date.now()+50*60*1000;
     updateDriveButtons();
     await syncDriveData(result.user);
     render();
   } catch(e) {
-    console.error(e);
+    console.error("Google Drive redirect failed:",e);
     setSync("⚠ Google Drive sync failed; local data is kept");
     message("Google Drive connection failed: " + e.message);
   }
@@ -499,6 +511,8 @@ onAuthStateChanged(auth, firebaseUser => {
     }
   }
 });
+
+handleDriveRedirect();
 
 /* ---------- NAVIGATION + HELPERS ---------- */
 
