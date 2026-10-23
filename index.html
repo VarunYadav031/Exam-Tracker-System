@@ -60,7 +60,7 @@ import { initializeApp }
   from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
 
 import {
-  getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult,
+  getAuth, GoogleAuthProvider, signInWithPopup,
   signOut as fbSignOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
 
@@ -423,39 +423,28 @@ window.loginBtn = async function() {
     return;
   }
 
-  await authorizeDrive();
+  await authorizeGoogle();
 };
 
 window.connectDrive = async function() {
-  await authorizeDrive();
+  await authorizeGoogle();
 };
 
-async function authorizeDrive() {
+async function authorizeGoogle() {
   try {
-    await signInWithRedirect(auth,provider);
-  } catch(e) {
-    console.error(e);
-    setSync("⚠ Google Drive sync failed; local data is kept");
-    message("Google Drive connection failed: " + e.message);
-  }
-}
-
-async function handleDriveRedirect() {
-  try {
-    const result = await getRedirectResult(auth);
-    if(!result) return;
-
+    setSync("Opening Google sign-in...");
+    const result = await signInWithPopup(auth,provider);
     await waitForAuthUser(result.user.uid);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if(!credential?.accessToken)
-      throw new Error("Google did not return Drive access. Please connect Google Drive again.");
+      throw new Error("Google did not return Drive access. Please try connecting again.");
     driveAccessToken = credential.accessToken;
     driveTokenExpiresAt = Date.now()+50*60*1000;
     updateDriveButtons();
     await syncDriveData(result.user);
     render();
   } catch(e) {
-    console.error("Google Drive redirect failed:",e);
+    console.error(e);
     setSync("⚠ Google Drive sync failed; local data is kept");
     message("Google Drive connection failed: " + e.message);
   }
@@ -512,8 +501,6 @@ onAuthStateChanged(auth, firebaseUser => {
   }
 });
 
-handleDriveRedirect();
-
 /* ---------- NAVIGATION + HELPERS ---------- */
 
 function go(tab) {
@@ -567,7 +554,7 @@ function render() {
     $("app").innerHTML = `
       <div class="card">
         <h2>📚 Exam Prep Tracker</h2>
-        <p>Google account se sign in karke apne exams, MCQs aur practice progress ko Firebase par save karein.</p>
+        <p>Google account se sign in karke apne exams, MCQs aur practice progress ko apne Google Drive mein save karein.</p>
         <p class="mu">Aapka data har account ke liye alag rakha jata hai.</p>
         <button class="pri" onclick="loginBtn()">Sign in with Google</button>
       </div>`;
