@@ -42,6 +42,8 @@ hr{border:0;border-top:1px solid var(--bd);margin:12px 0}
   <div class="row">
     <span id="sync">Sign in required</span>
     <button id="login" class="pri" onclick="loginBtn()">Sign in with Google</button>
+    <button id="driveConnect" hidden onclick="connectDrive()">Connect Google Drive</button>
+    <button id="driveSync" hidden onclick="syncDriveNow()">Sync now</button>
     <button id="export" onclick="exportData()">⬇ Backup</button>
     <button id="restore" onclick="document.getElementById('imp').click()">⬆ Restore</button>
     <input id="imp" type="file" accept=".json" hidden onchange="importData(this)">
@@ -49,7 +51,7 @@ hr{border:0;border-top:1px solid var(--bd);margin:12px 0}
 </header>
 <nav id="nav" hidden></nav>
 <main id="app">
-  <div class="card">Firebase load ho raha hai...</div>
+  <div class="card">App load ho raha hai...</div>
 </main>
 <div id="dlg"></div>
 
@@ -63,7 +65,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
 
 import {
-  getFirestore, doc, getDoc, setDoc
+  getFirestore, doc, getDoc
 } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
 
 /* ---------- FIREBASE CONFIGURATION ---------- */
@@ -82,6 +84,7 @@ const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 const provider = new GoogleAuthProvider();
+provider.addScope("https://www.googleapis.com/auth/drive.file");
 
 /* ---------- APP STATE ---------- */
 
@@ -98,6 +101,11 @@ let practice = {ids:[], index:0, picked:null};
 let filter = {exam:"", chapter:"", topic:"", status:"", q:""};
 let revisionFilter = {exam:"", chapter:"", topic:""};
 let dialogAction = null;
+let driveAccessToken = null;
+let driveTokenExpiresAt = 0;
+let driveSaveQueue = Promise.resolve();
+const authStateWaiters = [];
+const DRIVE_FILE_NAME = "ExamPrepData.json";
 
 const TABS = [
   ["dash","Dashboard"],["exams","My Exams"],
@@ -116,9 +124,6 @@ const esc = value => {
 };
 
 const accountKey = uidValue => "examPrep_" + uidValue;
-const localKey = () => user ? accountKey(user.uid) : "examprep";
-const userDoc = () => doc(db,"userData",user.uid);
-
 function setSync(text){ $("sync").textContent = text; }
 
 function message(text, onOK = null) {
@@ -131,6 +136,11 @@ function message(text, onOK = null) {
       </div>
     </div>`;
   $("dlg").style.display = "flex";
+}
+
+function waitForAuthUser(owner) {
+  if(user?.uid===owner) return Promise.resolve();
+  return new Promise(resolve => authStateWaiters.push({owner,resolve}));
 }
 
 function confirmAction(text, callback) {
@@ -156,11 +166,16 @@ window.confirmDialog = () => {
   if(fn) fn();
 };
 
-/* ---------- LOCAL + FIRESTORE STORAGE ---------- */
+/* ---------- LOCAL + GOOGLE DRIVE STORAGE ---------- */
 
 function saveLocal() {
+  if(!user) return;
+  saveLocalFor(user.uid,S);
+}
+
+function saveLocalFor(owner,data) {
   try {
-    localStorage.setItem(localKey(),JSON.stringify(S));
+    localStorage.setItem(accountKey(owner),JSON.stringify(data));
   } catch(e) {
     console.warn("Local save failed",e);
     setSync("Local storage full; backup recommended");
@@ -204,37 +219,189 @@ function normalizeData(data) {
   return data;
 }
 
+function driveTokenValid() {
+  return !!driveAccessToken && Date.now() < driveTokenExpiresAt;
+}
+
+function updateDriveButtons() {
+  const signedIn = !!user;
+  const connected = signedIn && driveTokenValid();
+  $("driveConnect").hidden = !signedIn || connected;
+  $("driveSync").hidden = !connected;
+}
+
+async function driveRequest(url,options={}) {
+  if(!driveTokenValid()) {
+    driveAccessToken = null;
+    updateDriveButtons();
+    throw new Error("Google Drive connection expired. Reconnect Google Drive to sync.");
+  }
+
+  const response = await fetch(url,{
+    ...options,
+    headers:{
+      ...(options.headers||{}),
+      Authorization:"Bearer "+driveAccessToken
+    }
+  });
+
+  if(response.status===401) {
+    driveAccessToken = null;
+    driveTokenExpiresAt = 0;
+    updateDriveButtons();
+    throw new Error("Google Drive authorization expired. Reconnect Google Drive to sync.");
+  }
+  if(!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Google Drive request failed (${response.status}): ${detail}`);
+  }
+  return response;
+}
+
+async function findDriveFile() {
+  const params = new URLSearchParams({
+    q:`name = '${DRIVE_FILE_NAME}' and mimeType = 'application/json' and trashed = false`,
+    orderBy:"modifiedTime desc",
+    pageSize:"100",
+    fields:"files(id,name,modifiedTime)"
+  });
+  const response = await driveRequest(
+    `https://www.googleapis.com/drive/v3/files?${params.toString()}`
+  );
+  const result = await response.json();
+  return result.files?.[0] || null;
+}
+
+async function writeDriveFile(data,fileId=null) {
+  const boundary = "----ExamPrepTracker"+uid().replace(/[^a-zA-Z0-9]/g,"");
+  const metadata = {name:DRIVE_FILE_NAME,mimeType:"application/json"};
+  const body = [
+    `--${boundary}`,
+    "Content-Type: application/json; charset=UTF-8",
+    "",
+    JSON.stringify(metadata),
+    `--${boundary}`,
+    "Content-Type: application/json; charset=UTF-8",
+    "",
+    JSON.stringify(data),
+    `--${boundary}--`,
+    ""
+  ].join("\r\n");
+  const endpoint = fileId
+    ? `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(fileId)}?uploadType=multipart`
+    : "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart";
+  await driveRequest(endpoint,{
+    method:fileId?"PATCH":"POST",
+    headers:{"Content-Type":`multipart/related; boundary=${boundary}`},
+    body
+  });
+}
+
+async function migrateLegacyFirestore(owner) {
+  const snapshot = await getDoc(doc(db,"userData",owner));
+  if(!snapshot.exists() || !validData(snapshot.data().state)) return null;
+  return normalizeData(snapshot.data().state);
+}
+
+async function syncDriveData(firebaseUser) {
+  if(!driveTokenValid()) throw new Error("Connect Google Drive before syncing.");
+  const owner = firebaseUser.uid;
+  if(auth.currentUser?.uid!==owner) return;
+
+  setSync("Checking Google Drive...");
+  const accountLocal = readLocal(accountKey(owner));
+  const local = validData(accountLocal) ? accountLocal : readLocal("examprep");
+  const hasLocal = validData(local);
+  const file = await findDriveFile();
+
+  if(file) {
+    const response = await driveRequest(
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`
+    );
+    let cloud;
+    try {
+      cloud = await response.json();
+    } catch(e) {
+      throw new Error("Drive backup is not valid JSON. Local data was left unchanged.");
+    }
+    if(!validData(cloud)) {
+      throw new Error("Drive backup format is invalid. Local data was left unchanged.");
+    }
+
+    if(hasLocal && Number(local.updated||0)>Number(cloud.updated||0)) {
+      S = normalizeData(local);
+      await writeDriveFile(S,file.id);
+    } else {
+      S = normalizeData(cloud);
+    }
+    saveLocalFor(owner,S);
+    setSync("☁️ Google Drive synced");
+    return;
+  }
+
+  let legacy;
+  try {
+    legacy = await migrateLegacyFirestore(owner);
+  } catch(e) {
+    console.error("Legacy Firestore migration failed:",e);
+    throw new Error("Could not check your old Firebase backup. It was not changed; check Firestore permissions and try again.");
+  }
+
+  const legacyUpdated = Number(legacy?.updated||0);
+  const localUpdated = Number(local?.updated||0);
+  const useLegacy = !!legacy && (!hasLocal || legacyUpdated>=localUpdated);
+  if(useLegacy) {
+    S = legacy;
+  } else if(hasLocal) {
+    S = normalizeData(local);
+  } else {
+    S = {exams:[],questions:[],updated:Date.now()};
+  }
+
+  if(!S.updated) S.updated = Date.now();
+  saveLocalFor(owner,S);
+  await writeDriveFile(S);
+  setSync(useLegacy
+    ? "☁️ Old Firebase data copied to Google Drive"
+    : "☁️ Local data copied to Google Drive");
+}
+
 function scheduleSave() {
   S.updated = Date.now();
   saveLocal();
 
   if(!user || loading) return;
+  if(!driveTokenValid()) {
+    setSync("Saved on this device; connect Google Drive to sync");
+    updateDriveButtons();
+    return;
+  }
 
   clearTimeout(saveTimer);
   const version = ++syncVersion;
-  setSync("Saving to Firebase...");
+  setSync("Saving to Google Drive...");
 
   saveTimer = setTimeout(async () => {
-    if(!user || loading || version !== syncVersion) return;
-
-    const owner = user.uid;
+    if(!user || loading || version !== syncVersion || !driveTokenValid()) return;
+    const firebaseUser = user;
     const snapshot = JSON.parse(JSON.stringify(S));
 
-    try {
-      await setDoc(doc(db,"userData",owner),{
-        state:snapshot,
-        updated:Date.now()
-      });
-
-      if(user && user.uid === owner && version === syncVersion) {
-        setSync("☁️ Firebase saved");
+    driveSaveQueue = driveSaveQueue.then(async () => {
+      if(!user || user.uid!==firebaseUser.uid || loading || version!==syncVersion) return;
+      if(!driveTokenValid()) {
+        setSync("Saved on this device; reconnect Google Drive to sync");
+        updateDriveButtons();
+        return;
       }
-    } catch(e) {
-      console.error("Firestore save error:",e);
-      if(user && user.uid === owner) {
-        setSync("⚠ Cloud save failed; local copy retained");
-      }
-    }
+      const file = await findDriveFile();
+      await writeDriveFile(snapshot,file?.id||null);
+      if(user?.uid===firebaseUser.uid && version===syncVersion)
+        setSync("☁️ Google Drive saved");
+    }).catch(e => {
+      console.error("Google Drive save error:",e);
+      if(user?.uid===firebaseUser.uid)
+        setSync("⚠ Drive save failed; local copy retained");
+    });
   },700);
 }
 
@@ -256,15 +423,46 @@ window.loginBtn = async function() {
     return;
   }
 
+  await authorizeDrive();
+};
+
+window.connectDrive = async function() {
+  await authorizeDrive();
+};
+
+async function authorizeDrive() {
   try {
-    await signInWithPopup(auth,provider);
+    const result = await signInWithPopup(auth,provider);
+    await waitForAuthUser(result.user.uid);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if(!credential?.accessToken)
+      throw new Error("Google did not return Drive access. Please try connecting again.");
+    driveAccessToken = credential.accessToken;
+    driveTokenExpiresAt = Date.now()+50*60*1000;
+    updateDriveButtons();
+    await syncDriveData(result.user);
+    render();
   } catch(e) {
     console.error(e);
-    message("Google login failed: " + e.message);
+    setSync("⚠ Google Drive sync failed; local data is kept");
+    message("Google Drive connection failed: " + e.message);
+  }
+}
+
+window.syncDriveNow = async function() {
+  if(!user) return message("Pehle Google se sign in karein.");
+  if(!driveTokenValid()) return connectDrive();
+  try {
+    await syncDriveData(user);
+    render();
+  } catch(e) {
+    console.error("Google Drive sync failed:",e);
+    setSync("⚠ Drive sync failed; local data is kept");
+    message("Google Drive sync failed: " + e.message);
   }
 };
 
-onAuthStateChanged(auth, async firebaseUser => {
+onAuthStateChanged(auth, firebaseUser => {
   clearTimeout(saveTimer);
   syncVersion++;
   user = firebaseUser;
@@ -274,6 +472,7 @@ onAuthStateChanged(auth, async firebaseUser => {
   $("login").className = user ? "" : "pri";
   $("export").hidden = !user;
   $("restore").hidden = !user;
+  updateDriveButtons();
 
   if(!user) {
     S = {exams:[],questions:[]};
@@ -283,42 +482,21 @@ onAuthStateChanged(auth, async firebaseUser => {
     return;
   }
 
-  setSync("Loading your cloud data...");
-
-  try {
-    const ref = userDoc();
-    const snap = await getDoc(ref);
-
-    if(!user || auth.currentUser?.uid !== user.uid) return;
-
-    if(snap.exists() && validData(snap.data().state)) {
-      S = normalizeData(snap.data().state);
-    } else {
-      // Restore this account's local copy first.
-      const ownLocal = readLocal(accountKey(user.uid));
-
-      if(validData(ownLocal)) {
-        S = normalizeData(ownLocal);
-      } else {
-        // One-time migration of the old single-user app's local data.
-        const oldLocal = readLocal("examprep");
-        S = validData(oldLocal)
-          ? normalizeData(oldLocal)
-          : {exams:[],questions:[]};
-      }
-
-      await setDoc(ref,{state:S,updated:Date.now()});
+  const local = readLocal(accountKey(user.uid));
+  const oldLocal = validData(local) ? null : readLocal("examprep");
+  S = normalizeData(validData(local) ? local :
+    validData(oldLocal) ? oldLocal : {exams:[],questions:[]});
+  if(!validData(local) && validData(oldLocal)) saveLocalFor(user.uid,S);
+  loading = false;
+  render();
+  setSync(driveTokenValid()
+    ? "Google Drive ready; sync to load latest data"
+    : "Saved on this device; connect Google Drive to sync");
+  for(let i=authStateWaiters.length-1;i>=0;i--) {
+    if(authStateWaiters[i].owner===user.uid) {
+      authStateWaiters[i].resolve();
+      authStateWaiters.splice(i,1);
     }
-
-    saveLocal();
-    setSync("☁️ Firebase connected");
-  } catch(e) {
-    console.error("Firebase load error:",e);
-    S = normalizeData(readLocal(localKey()) || {exams:[],questions:[]});
-    setSync("⚠ Cloud load failed; showing local data");
-  } finally {
-    loading = false;
-    render();
   }
 });
 
@@ -1036,7 +1214,10 @@ function settingsPage() {
   return `<div class="card">
     <h3>Account</h3>
     <p>${esc(user?.email||"")}</p>
-    <p class="mu">Signed-in account ka data Firestore ke userData/${esc(user?.uid||"")} document mein save hota hai.</p>
+    <p class="mu">Questions aapke browser mein local copy aur aapke Google Drive mein ${DRIVE_FILE_NAME} ke roop mein save hote hain.</p>
+    ${driveTokenValid()
+      ? btn("Sync now / restore from this device","syncDriveNow()")
+      : btn("Connect Google Drive","connectDrive()","pri")}
     <button class="pri" onclick="loginBtn()">Sign out</button>
   </div>
   <div class="card">
@@ -1045,7 +1226,7 @@ function settingsPage() {
   </div>
   <div class="card">
     <h3>Data backup</h3>
-    <p class="mu">Cloud sync ke alawa JSON backup laptop par save kar sakte hain.</p>
+    <p class="mu">Drive file delete karne ke baad, isi device par Google Drive reconnect karke Sync now dabayein. Is browser ki local copy Drive par dobara upload hogi. Har device ki local copy alag hoti hai.</p>
     <button onclick="exportData()">Download backup</button>
     <button onclick="document.getElementById('imp').click()">Restore backup</button>
   </div>`;
