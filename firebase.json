@@ -4,8 +4,14 @@
     "ignore": [
       "firebase.json",
       ".firebaserc",
+      ".gitignore",
       "README.md",
+      ".git/**",
+      "**/.git/**",
+      ".firebase/**",
+      "**/.firebase/**",
       ".vscode/**",
+      "**/.vscode/**",
       "**/.*",
       "**/node_modules/**"
     ]
