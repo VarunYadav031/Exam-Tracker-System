@@ -84,7 +84,8 @@ const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 const provider = new GoogleAuthProvider();
-provider.addScope("https://www.googleapis.com/auth/drive.file");
+const driveProvider = new GoogleAuthProvider();
+driveProvider.addScope("https://www.googleapis.com/auth/drive.file");
 
 /* ---------- APP STATE ---------- */
 
@@ -423,18 +424,28 @@ window.loginBtn = async function() {
     return;
   }
 
-  await authorizeGoogle();
+  await authorizeGoogle(false);
 };
 
 window.connectDrive = async function() {
-  await authorizeGoogle();
+  await authorizeGoogle(true);
 };
 
-async function authorizeGoogle() {
+async function authorizeGoogle(connectDriveAccess) {
   try {
-    setSync("Opening Google sign-in...");
-    const result = await signInWithPopup(auth,provider);
+    setSync(connectDriveAccess
+      ? "Opening Google Drive permission..."
+      : "Opening Google sign-in...");
+    const selectedProvider = connectDriveAccess ? driveProvider : provider;
+    const result = await signInWithPopup(auth,selectedProvider);
     await waitForAuthUser(result.user.uid);
+
+    if(!connectDriveAccess) {
+      render();
+      setSync("Signed in; connect Google Drive to sync your data");
+      return;
+    }
+
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if(!credential?.accessToken)
       throw new Error("Google did not return Drive access. Please try connecting again.");
@@ -445,8 +456,13 @@ async function authorizeGoogle() {
     render();
   } catch(e) {
     console.error(e);
-    setSync("⚠ Google Drive sync failed; local data is kept");
-    message("Google Drive connection failed: " + e.message);
+    if(connectDriveAccess) {
+      setSync("⚠ Google Drive sync failed; local data is kept");
+      message("Google Drive connection failed: " + e.message);
+    } else {
+      setSync("⚠ Google sign-in failed");
+      message("Google sign-in failed: " + e.message);
+    }
   }
 }
 
