@@ -12,12 +12,27 @@
 body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
 header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--bd);flex-wrap:wrap}
 h1{font-size:18px;margin:0}h2{font-size:20px}
-nav{display:flex;gap:6px;padding:10px 16px;overflow-x:auto}
-main{max-width:900px;margin:auto;padding:4px 16px 40px}
+nav{display:flex;flex-direction:column;gap:6px;padding:14px 10px}
+.workspace{display:flex;align-items:flex-start;min-height:calc(100vh - 66px)}
+.sidebar{flex:0 0 220px;min-height:calc(100vh - 66px);background:var(--card);border-right:1px solid var(--bd)}
+.nav-link{display:flex;align-items:center;gap:10px;width:100%;text-align:left}
+.nav-icon{width:24px;text-align:center;font-size:18px}
+main{flex:1;min-width:0;max-width:1100px;margin:0 auto;padding:12px 20px 40px}
+header .row{gap:8px}
+.profile{display:flex;align-items:center;gap:9px;padding-left:10px;border-left:1px solid var(--bd)}
+.profile-avatar{width:40px;height:40px;position:relative;display:grid;place-items:center;flex:0 0 40px;border-radius:50%;overflow:hidden;background:var(--ac);color:#fff;font-weight:700}
+.profile-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.profile-copy{min-width:0;max-width:180px}
+.profile-copy strong,.profile-copy span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.profile-copy span{font-size:12px;color:var(--mu)}
+.profile-actions{display:flex;gap:4px;align-items:center}
+.profile-actions button{padding:6px 8px;font-size:12px}
+.section-title{margin:8px 2px;font-size:16px}
 button,input,select,textarea{font:inherit;color:var(--tx)}
 button{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:8px 12px;cursor:pointer}
 button:disabled{opacity:.5;cursor:not-allowed}
 button.on,button.pri{background:var(--ac);border-color:var(--ac);color:white}
+button.on .nav-icon{filter:grayscale(1) brightness(10)}
 button.del{color:var(--no)}
 input,select,textarea{width:100%;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:9px;margin:4px 0 10px}
 label{font-size:13px;color:var(--mu);display:block}
@@ -30,10 +45,42 @@ label{font-size:13px;color:var(--mu);display:block}
 .opt{display:block;width:100%;text-align:left;margin:7px 0;padding:11px}
 .opt.ok{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 15%,var(--card))}
 .opt.bad{border-color:var(--no);background:color-mix(in srgb,var(--no) 15%,var(--card))}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:10px}
+code,textarea.code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
 hr{border:0;border-top:1px solid var(--bd);margin:12px 0}
 #sync{font-size:12px;color:var(--mu)}
 #dlg{display:none;position:fixed;inset:0;background:#0007;align-items:center;justify-content:center;z-index:10;padding:15px}
 #dlg .card{width:min(420px,100%)}
+.notes-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.notes-toolbar h2{margin:4px 0}
+.note-card{padding:0;overflow:hidden}
+.note-card-header{padding:16px 18px 10px;background:linear-gradient(135deg,color-mix(in srgb,var(--ac) 10%,var(--card)),var(--card))}
+.note-card-header h3{margin:0;font-size:17px;overflow-wrap:anywhere}
+.note-card-body{padding:0 18px 16px}
+.note-content{margin:6px 0 12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.note-content.preview{max-height:6em;overflow:hidden;mask-image:linear-gradient(#000 70%,transparent)}
+.note-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:7px}
+.note-editor{border-color:color-mix(in srgb,var(--ac) 35%,var(--bd))}
+.note-editor textarea{min-height:180px;resize:vertical}
+.note-empty{text-align:center;padding:34px 18px}
+@media(max-width:700px){
+  header{align-items:flex-start}
+  header>.row{justify-content:flex-end;flex:1}
+  .sidebar{flex-basis:190px}
+  main{padding:10px 12px 30px}
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
+  .stat b{font-size:21px}
+  .note-card-header,.note-card-body{padding-left:14px;padding-right:14px}
+}
+@media(max-width:520px){
+  .workspace{display:block}
+  .sidebar{min-height:0;border-right:0;border-bottom:1px solid var(--bd)}
+  nav{gap:4px;padding:8px;max-height:270px;overflow-y:auto}
+  .nav-link{padding:7px 9px}
+  header .row{justify-content:flex-start}
+  .profile-copy{max-width:120px}
+  main{padding:8px 10px 28px}
+}
 </style>
 </head>
 <body>
@@ -46,13 +93,17 @@ hr{border:0;border-top:1px solid var(--bd);margin:12px 0}
     <button id="driveSync" hidden onclick="syncDriveNow()">Sync now</button>
     <button id="export" onclick="exportData()">⬇ Backup</button>
     <button id="restore" onclick="document.getElementById('imp').click()">⬆ Restore</button>
+    <div id="profile" class="profile" hidden></div>
+    <input id="profilePhotoInput" type="file" accept="image/*" hidden onchange="changeProfilePhoto(this)">
     <input id="imp" type="file" accept=".json" hidden onchange="importData(this)">
   </div>
 </header>
-<nav id="nav" hidden></nav>
-<main id="app">
-  <div class="card">App load ho raha hai...</div>
-</main>
+<div class="workspace">
+  <aside class="sidebar"><nav id="nav" hidden aria-label="Main navigation"></nav></aside>
+  <main id="app">
+    <div class="card">App load ho raha hai...</div>
+  </main>
+</div>
 <div id="dlg"></div>
 
 <script type="module">
@@ -89,14 +140,21 @@ driveProvider.addScope("https://www.googleapis.com/auth/drive.file");
 
 /* ---------- APP STATE ---------- */
 
-let S = {exams:[], questions:[]};
+let S = {exams:[], questions:[], codingQuestions:[], notes:[]};
 let view = "dash";
 let user = null;
 let loading = false;
 let saveTimer = null;
 let syncVersion = 0;
 let editId = null;
+let codingEditId = null;
+let codingPre = null;
+let codingDraft = null;
 let pre = null;
+let noteEditId = null;
+let noteEditorOpen = false;
+let noteSearch = "";
+let expandedNotes = new Set();
 let bulkQuestions = [];
 let practice = {ids:[], index:0, picked:null};
 let filter = {exam:"", chapter:"", topic:"", status:"", q:""};
@@ -107,16 +165,38 @@ let driveTokenExpiresAt = 0;
 let driveSaveQueue = Promise.resolve();
 const authStateWaiters = [];
 const DRIVE_FILE_NAME = "ExamPrepData.json";
+const uid = () => crypto.randomUUID
+  ? crypto.randomUUID() : Math.random().toString(36).slice(2)+Date.now();
+const DEVICE_ID_KEY = "examPrep_deviceId";
+const DEVICE_ID = (() => {
+  try {
+    let id = localStorage.getItem(DEVICE_ID_KEY);
+    if(!id) {
+      id = uid();
+      localStorage.setItem(DEVICE_ID_KEY,id);
+    }
+    return id;
+  } catch(e) {
+    console.warn("Device sync ID could not be persisted:",e);
+    return uid();
+  }
+})();
+const EMPTY_DELETIONS = {
+  exams:[],chapters:[],topics:[],questions:[],codingQuestions:[],notes:[]
+};
 
 const TABS = [
-  ["dash","Dashboard"],["exams","My Exams"],
-  ["add","Add Question"],["bank","Question Bank"],
-  ["prac","Practice"],["rev","Revision"],["set","Settings"]
+  ["dash","Dashboard","🏠"],["exams","My Exams","📚"],
+  ["add","Add Question","➕"],["bank","Question Bank","🗂️"],
+  ["prac","Practice","✍️"],["rev","Revision","🔁"],
+  ["coding","Coding","💻"],["codeRev","Code Revision","🧠"],["notes","Notes","📝"],
+  ["set","Settings","⚙️"]
+];
+const CODE_LANGUAGES = [
+  ["cpp","C++"],["java","Java"],["python","Python"],["javascript","JavaScript"]
 ];
 
 const $ = id => document.getElementById(id);
-const uid = () => crypto.randomUUID
-  ? crypto.randomUUID() : Math.random().toString(36).slice(2)+Date.now();
 
 const esc = value => {
   const d = document.createElement("div");
@@ -198,12 +278,23 @@ function validData(data) {
 }
 
 function normalizeData(data) {
-  if(!validData(data)) return {exams:[],questions:[]};
+  if(!validData(data)) return {exams:[],questions:[],codingQuestions:[],notes:[]};
+  if(!Array.isArray(data.codingQuestions)) data.codingQuestions = [];
+  if(!Array.isArray(data.notes)) data.notes = [];
+  data.deleted = data.deleted && typeof data.deleted==="object" ? data.deleted : {};
+  Object.keys(EMPTY_DELETIONS).forEach(type=>{
+    if(!Array.isArray(data.deleted[type])) data.deleted[type] = [];
+  });
+  if(typeof data.profilePhoto !== "string" || !data.profilePhoto.startsWith("data:image/jpeg;base64,"))
+    data.profilePhoto = "";
 
   data.exams.forEach(e => {
     if(!Array.isArray(e.chapters)) e.chapters = [];
     e.chapters.forEach(c => {
       if(!Array.isArray(c.topics)) c.topics = [];
+      c.topics.forEach(t => {
+        if(typeof t.notes !== "string") t.notes = "";
+      });
     });
   });
 
@@ -215,9 +306,198 @@ function normalizeData(data) {
     q.wrong = Number(q.wrong || 0);
     q.bm = !!q.bm;
     q.revise = !!q.revise;
+    if(!q.progressByDevice || typeof q.progressByDevice!=="object" ||
+      (!Object.keys(q.progressByDevice).length && q.attempts)) {
+      q.progressByDevice = {
+        legacy:{
+          attempts:q.attempts,correct:q.correct,wrong:q.wrong,
+          last:q.last||null,lastOk:!!q.lastOk,lastAttemptAt:Number(q.updatedAt||0)
+        }
+      };
+    }
+    Object.values(q.progressByDevice).forEach(progress=>{
+      progress.attempts = Number(progress.attempts||0);
+      progress.correct = Number(progress.correct||0);
+      progress.wrong = Number(progress.wrong||0);
+      progress.last = progress.last||null;
+      progress.lastAttemptAt = Number(progress.lastAttemptAt||0);
+    });
+    updateQuestionProgress(q);
+  });
+
+  data.codingQuestions = data.codingQuestions.filter(q => q && typeof q === "object");
+  data.codingQuestions.forEach(q => {
+    q.title = String(q.title || "");
+    q.prompt = String(q.prompt || "");
+    q.constraints = String(q.constraints || "");
+    q.conceptNotes = String(q.conceptNotes || "");
+    q.solutions = q.solutions && typeof q.solutions === "object" ? q.solutions : {};
+    CODE_LANGUAGES.forEach(([id]) => {
+      if(typeof q.solutions[id] !== "string") q.solutions[id] = "";
+    });
+    q.testCases = Array.isArray(q.testCases) ? q.testCases : [];
+    q.testCases = q.testCases.map(testCase => ({
+      input:String(testCase?.input ?? ""),
+      expected:String(testCase?.expected ?? "")
+    }));
+    q.revise = !!q.revise;
+  });
+
+  data.notes = data.notes.filter(note => note && typeof note === "object");
+  data.notes.forEach(note => {
+    note.id = String(note.id || uid());
+    note.title = String(note.title || "");
+    note.content = String(note.content || "");
+    note.category = String(note.category || "");
+    note.createdAt = Number(note.createdAt || note.updatedAt || Date.now());
+    note.updatedAt = Number(note.updatedAt || note.createdAt);
   });
 
   return data;
+}
+
+function updateQuestionProgress(question) {
+  const entries = Object.values(question.progressByDevice||{});
+  question.attempts = entries.reduce((total,item)=>total+item.attempts,0);
+  question.correct = entries.reduce((total,item)=>total+item.correct,0);
+  question.wrong = entries.reduce((total,item)=>total+item.wrong,0);
+  const latest = entries.reduce((winner,item)=>
+    Number(item.lastAttemptAt||0)>Number(winner?.lastAttemptAt||0) ? item : winner,null);
+  if(latest) {
+    question.last = latest.last;
+    question.lastOk = !!latest.lastOk;
+  }
+}
+
+function mergeRecords(localRecords,remoteRecords,mergeNested) {
+  const localById = new Map(localRecords.map(record=>[record.id,record]));
+  const remoteById = new Map(remoteRecords.map(record=>[record.id,record]));
+  const ids = new Set([...remoteById.keys(),...localById.keys()]);
+  return [...ids].map(id=>{
+    const localRecord = localById.get(id);
+    const remoteRecord = remoteById.get(id);
+    let record;
+    if(!localRecord) record = {...remoteRecord};
+    else if(!remoteRecord) record = {...localRecord};
+    else {
+      const localTime = Number(localRecord.updatedAt||0);
+      const remoteTime = Number(remoteRecord.updatedAt||0);
+      record = {...(localTime>=remoteTime?remoteRecord:localRecord),
+        ...(localTime>=remoteTime?localRecord:remoteRecord)};
+      if(mergeNested) record = mergeNested(localRecord,remoteRecord,record);
+    }
+    return record;
+  });
+}
+
+function mergeData(localData,remoteData) {
+  const local = normalizeData(JSON.parse(JSON.stringify(localData)));
+  const remote = normalizeData(JSON.parse(JSON.stringify(remoteData)));
+  const merged = {...remote,...local};
+  merged.deleted = {};
+  Object.keys(EMPTY_DELETIONS).forEach(type=>{
+    merged.deleted[type] = [...new Set([
+      ...remote.deleted[type],...local.deleted[type]
+    ])];
+  });
+
+  merged.exams = mergeRecords(local.exams,remote.exams,(localExam,remoteExam,exam)=>{
+    exam.chapters = mergeRecords(localExam.chapters||[],remoteExam.chapters||[],
+      (localChapter,remoteChapter,chapter)=>{
+        chapter.topics = mergeRecords(localChapter.topics||[],remoteChapter.topics||[]);
+        return chapter;
+      });
+    return exam;
+  }).filter(exam=>!merged.deleted.exams.includes(exam.id));
+
+  const deletedChapters = new Set(merged.deleted.chapters);
+  const deletedTopics = new Set(merged.deleted.topics);
+  merged.exams.forEach(exam=>{
+    exam.chapters = exam.chapters.filter(chapter=>!deletedChapters.has(chapter.id));
+    exam.chapters.forEach(chapter=>{
+      chapter.topics = chapter.topics.filter(topic=>!deletedTopics.has(topic.id));
+    });
+  });
+
+  merged.questions = mergeRecords(local.questions,remote.questions,(localQuestion,remoteQuestion,question)=>{
+    question.progressByDevice = {...remoteQuestion.progressByDevice};
+    Object.entries(localQuestion.progressByDevice||{}).forEach(([deviceId,progress])=>{
+      const existing = question.progressByDevice[deviceId];
+      if(!existing) question.progressByDevice[deviceId] = {...progress};
+      else {
+        const newest = Number(progress.lastAttemptAt||0)>Number(existing.lastAttemptAt||0)
+          ? progress : existing;
+        question.progressByDevice[deviceId] = {
+          attempts:Math.max(existing.attempts,progress.attempts),
+          correct:Math.max(existing.correct,progress.correct),
+          wrong:Math.max(existing.wrong,progress.wrong),
+          last:newest.last||null,lastOk:!!newest.lastOk,
+          lastAttemptAt:Math.max(Number(existing.lastAttemptAt||0),Number(progress.lastAttemptAt||0))
+        };
+      }
+    });
+    updateQuestionProgress(question);
+    return question;
+  }).filter(question=>!merged.deleted.questions.includes(question.id) &&
+    !merged.deleted.exams.includes(question.examId) &&
+    !merged.deleted.chapters.includes(question.chapterId) &&
+    !merged.deleted.topics.includes(question.topicId));
+
+  merged.codingQuestions = mergeRecords(local.codingQuestions,remote.codingQuestions)
+    .filter(question=>!merged.deleted.codingQuestions.includes(question.id) &&
+      !merged.deleted.exams.includes(question.examId) &&
+      !merged.deleted.chapters.includes(question.chapterId) &&
+      !merged.deleted.topics.includes(question.topicId));
+
+  merged.notes = mergeRecords(local.notes,remote.notes)
+    .filter(note=>!merged.deleted.notes.includes(note.id));
+
+  merged.updated = Math.max(Number(local.updated||0),Number(remote.updated||0));
+  const localPhotoTime = Number(local.profilePhotoUpdatedAt||0);
+  const remotePhotoTime = Number(remote.profilePhotoUpdatedAt||0);
+  if(remotePhotoTime>localPhotoTime) {
+    merged.profilePhoto = remote.profilePhoto;
+    merged.profilePhotoUpdatedAt = remotePhotoTime;
+  } else {
+    merged.profilePhoto = local.profilePhoto;
+    merged.profilePhotoUpdatedAt = localPhotoTime;
+  }
+  return normalizeData(merged);
+}
+
+function markDeleted(type,id) {
+  if(!S.deleted || !Array.isArray(S.deleted[type])) {
+    S.deleted = Object.fromEntries(Object.entries(EMPTY_DELETIONS)
+      .map(([key,ids])=>[key,[...ids]]));
+  }
+  if(!S.deleted[type].includes(id)) S.deleted[type].push(id);
+}
+
+function stamp(record) {
+  if(record) record.updatedAt = Date.now();
+}
+
+function recordQuestionAttempt(question,correct) {
+  if(!question.progressByDevice || typeof question.progressByDevice!=="object") {
+    question.progressByDevice = {
+      legacy:{
+        attempts:Number(question.attempts||0),correct:Number(question.correct||0),
+        wrong:Number(question.wrong||0),last:question.last||null,
+        lastOk:!!question.lastOk,lastAttemptAt:Number(question.updatedAt||0)
+      }
+    };
+  }
+  const progress = question.progressByDevice[DEVICE_ID] ||
+    (question.progressByDevice[DEVICE_ID]={attempts:0,correct:0,wrong:0,last:null,lastOk:false,lastAttemptAt:0});
+  const timestamp = Date.now();
+  progress.attempts++;
+  if(correct) progress.correct++;
+  else progress.wrong++;
+  progress.last = new Date(timestamp).toISOString().slice(0,10);
+  progress.lastOk = correct;
+  progress.lastAttemptAt = timestamp;
+  updateQuestionProgress(question);
+  stamp(question);
 }
 
 function driveTokenValid() {
@@ -254,7 +534,9 @@ async function driveRequest(url,options={}) {
   }
   if(!response.ok) {
     const detail = await response.text();
-    throw new Error(`Google Drive request failed (${response.status}): ${detail}`);
+    const error = new Error(`Google Drive request failed (${response.status}): ${detail}`);
+    error.status = response.status;
+    throw error;
   }
   return response;
 }
@@ -273,7 +555,7 @@ async function findDriveFile() {
   return result.files?.[0] || null;
 }
 
-async function writeDriveFile(data,fileId=null) {
+async function writeDriveFile(data,fileId=null,etag=null) {
   const boundary = "----ExamPrepTracker"+uid().replace(/[^a-zA-Z0-9]/g,"");
   const metadata = {name:DRIVE_FILE_NAME,mimeType:"application/json"};
   const body = [
@@ -293,7 +575,10 @@ async function writeDriveFile(data,fileId=null) {
     : "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart";
   await driveRequest(endpoint,{
     method:fileId?"PATCH":"POST",
-    headers:{"Content-Type":`multipart/related; boundary=${boundary}`},
+    headers:{
+      "Content-Type":`multipart/related; boundary=${boundary}`,
+      ...(fileId&&etag?{"If-Match":etag}:{})
+    },
     body
   });
 }
@@ -311,32 +596,15 @@ async function syncDriveData(firebaseUser) {
 
   setSync("Checking Google Drive...");
   const accountLocal = readLocal(accountKey(owner));
-  const local = validData(accountLocal) ? accountLocal : readLocal("examprep");
-  const hasLocal = validData(local);
+  const oldLocal = validData(accountLocal) ? null : readLocal("examprep");
+  const local = normalizeData(validData(accountLocal) ? accountLocal :
+    validData(oldLocal) ? oldLocal : {exams:[],questions:[],codingQuestions:[],notes:[]});
   const file = await findDriveFile();
 
   if(file) {
-    const response = await driveRequest(
-      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`
-    );
-    let cloud;
-    try {
-      cloud = await response.json();
-    } catch(e) {
-      throw new Error("Drive backup is not valid JSON. Local data was left unchanged.");
-    }
-    if(!validData(cloud)) {
-      throw new Error("Drive backup format is invalid. Local data was left unchanged.");
-    }
-
-    if(hasLocal && Number(local.updated||0)>Number(cloud.updated||0)) {
-      S = normalizeData(local);
-      await writeDriveFile(S,file.id);
-    } else {
-      S = normalizeData(cloud);
-    }
+    S = await mergeWithDriveFile(local,file);
     saveLocalFor(owner,S);
-    setSync("☁️ Google Drive synced");
+    setSync("☁️ Google Drive merged and synced");
     return;
   }
 
@@ -348,23 +616,46 @@ async function syncDriveData(firebaseUser) {
     throw new Error("Could not check your old Firebase backup. It was not changed; check Firestore permissions and try again.");
   }
 
-  const legacyUpdated = Number(legacy?.updated||0);
-  const localUpdated = Number(local?.updated||0);
-  const useLegacy = !!legacy && (!hasLocal || legacyUpdated>=localUpdated);
-  if(useLegacy) {
-    S = legacy;
-  } else if(hasLocal) {
-    S = normalizeData(local);
-  } else {
-    S = {exams:[],questions:[],updated:Date.now()};
-  }
-
+  S = legacy ? mergeData(local,legacy) : local;
   if(!S.updated) S.updated = Date.now();
+  const created = await mergeWithDriveFile(S,null);
+  S = created;
   saveLocalFor(owner,S);
-  await writeDriveFile(S);
-  setSync(useLegacy
-    ? "☁️ Old Firebase data copied to Google Drive"
-    : "☁️ Local data copied to Google Drive");
+  setSync(legacy
+    ? "☁️ Old Firebase and local data merged into Google Drive"
+    : "☁️ Local data saved to Google Drive");
+}
+
+async function mergeWithDriveFile(localSnapshot,fileHint) {
+  let file = fileHint;
+  for(let attempt=0;attempt<4;attempt++) {
+    if(attempt>0 || !file) file = await findDriveFile();
+    let remote = {exams:[],questions:[],codingQuestions:[],notes:[]};
+    let etag = null;
+    if(file) {
+      const response = await driveRequest(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`
+      );
+      etag = response.headers?.get("ETag") || null;
+      try {
+        remote = await response.json();
+      } catch(e) {
+        throw new Error("Drive backup is not valid JSON. Local data was left unchanged.");
+      }
+      if(!validData(remote))
+        throw new Error("Drive backup format is invalid. Local data was left unchanged.");
+    }
+
+    const merged = mergeData(localSnapshot,remote);
+    merged.updated = Date.now();
+    try {
+      await writeDriveFile(merged,file?.id||null,etag);
+      return merged;
+    } catch(e) {
+      if(e.status!==412 || attempt===3) throw e;
+    }
+  }
+  throw new Error("Drive data changed repeatedly during sync. Please try Sync now again.");
 }
 
 function scheduleSave() {
@@ -394,10 +685,14 @@ function scheduleSave() {
         updateDriveButtons();
         return;
       }
-      const file = await findDriveFile();
-      await writeDriveFile(snapshot,file?.id||null);
-      if(user?.uid===firebaseUser.uid && version===syncVersion)
-        setSync("☁️ Google Drive saved");
+      const merged = await mergeWithDriveFile(snapshot,null);
+      if(user?.uid===firebaseUser.uid && version===syncVersion) {
+        S = mergeData(S,merged);
+        S.updated = merged.updated;
+        saveLocalFor(firebaseUser.uid,S);
+        render();
+        setSync("☁️ Google Drive merged and saved");
+      }
     }).catch(e => {
       console.error("Google Drive save error:",e);
       if(user?.uid===firebaseUser.uid)
@@ -485,14 +780,15 @@ onAuthStateChanged(auth, firebaseUser => {
   user = firebaseUser;
   loading = true;
 
-  $("login").textContent = user ? "Sign out" : "Sign in with Google";
+  $("login").hidden = !!user;
+  $("login").textContent = "Sign in with Google";
   $("login").className = user ? "" : "pri";
   $("export").hidden = !user;
   $("restore").hidden = !user;
   updateDriveButtons();
 
   if(!user) {
-    S = {exams:[],questions:[]};
+    S = {exams:[],questions:[],codingQuestions:[],notes:[]};
     loading = false;
     render();
     setSync("Sign in required");
@@ -522,6 +818,11 @@ onAuthStateChanged(auth, firebaseUser => {
 function go(tab) {
   view = tab;
   editId = null;
+  codingEditId = null;
+  codingPre = null;
+  codingDraft = null;
+  noteEditId = null;
+  noteEditorOpen = false;
   pre = null;
   render();
 }
@@ -562,9 +863,100 @@ function btn(label, action, cls="") {
   return `<button class="${cls}" onclick="${action}">${label}</button>`;
 }
 
+function renderProfile() {
+  const profile = $("profile");
+  if(!user) {
+    profile.hidden = true;
+    profile.innerHTML = "";
+    return;
+  }
+
+  const email = user.email || "";
+  const name = user.displayName || email.split("@")[0] || "Account";
+  const initials = name.trim().split(/\s+/).slice(0,2)
+    .map(part=>part[0]||"").join("").toUpperCase() || "A";
+  const photo = S.profilePhoto || user.photoURL || "";
+  profile.hidden = false;
+  profile.innerHTML = `
+    <div class="profile-avatar" aria-label="${esc(name)}">
+      <span>${esc(initials)}</span>
+      ${photo?`<img src="${esc(photo)}" alt="" referrerpolicy="no-referrer" onerror="this.hidden=true">`:""}
+    </div>
+    <div class="profile-copy"><strong>${esc(name)}</strong>
+      ${email?`<span>${esc(email)}</span>`:""}
+    </div>
+    <div class="profile-actions">
+      ${btn(S.profilePhoto?"Change photo":"Add photo","document.getElementById('profilePhotoInput').click()")}
+      ${S.profilePhoto?btn("Use Google photo","useGoogleProfilePhoto()"):""}
+      ${btn("Sign out","loginBtn()")}
+    </div>`;
+}
+
+window.changeProfilePhoto = async function(input) {
+  const file = input.files?.[0];
+  if(!file) return;
+
+  try {
+    if(!file.type.startsWith("image/"))
+      throw new Error("Please choose an image file.");
+    if(file.size > 10*1024*1024)
+      throw new Error("Image is too large. Please choose an image under 10 MB.");
+
+    const bitmap = await createImageBitmap(file);
+    try {
+      const side = Math.min(bitmap.width,bitmap.height);
+      if(!side) throw new Error("Could not read this image. Please choose another file.");
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 256;
+      const context = canvas.getContext("2d");
+      if(!context) throw new Error("Image editing is unavailable in this browser.");
+      context.drawImage(bitmap,(bitmap.width-side)/2,(bitmap.height-side)/2,side,side,0,0,256,256);
+      const blob = await new Promise(resolve=>canvas.toBlob(resolve,"image/jpeg",0.8));
+      if(!blob) throw new Error("Could not prepare the image. Please try another file.");
+      if(blob.size > 200*1024)
+        throw new Error("The compressed image is still too large. Please choose a simpler image.");
+      const photo = await new Promise((resolve,reject)=>{
+        const reader = new FileReader();
+        reader.onload = () => typeof reader.result==="string"
+          ? resolve(reader.result)
+          : reject(new Error("Could not read the compressed image."));
+        reader.onerror = () => reject(new Error("Could not read the compressed image."));
+        reader.readAsDataURL(blob);
+      });
+
+      S.profilePhoto = photo;
+      S.profilePhotoUpdatedAt = Date.now();
+      save();
+      render();
+      setSync(driveTokenValid()
+        ? "Profile photo saved; syncing to Google Drive..."
+        : "Profile photo saved on this device; connect Google Drive to sync");
+    } finally {
+      bitmap.close();
+    }
+  } catch(e) {
+    console.error("Profile photo update failed:",e);
+    message("Profile photo could not be saved: "+e.message);
+  } finally {
+    input.value = "";
+  }
+};
+
+window.useGoogleProfilePhoto = function() {
+  S.profilePhoto = "";
+  S.profilePhotoUpdatedAt = Date.now();
+  save();
+  render();
+  setSync(driveTokenValid()
+    ? "Google profile photo restored; syncing to Google Drive..."
+    : "Google profile photo restored; connect Google Drive to sync");
+};
+
 /* ---------- RENDER ---------- */
 
 function render() {
+  renderProfile();
   if(!user) {
     $("nav").hidden = true;
     $("app").innerHTML = `
@@ -578,13 +970,16 @@ function render() {
   }
 
   $("nav").hidden = false;
-  $("nav").innerHTML = TABS.map(([id,label]) =>
-    `<button class="${view===id?"on":""}" onclick="go('${id}')">${label}</button>`
+  $("nav").innerHTML = TABS.map(([id,label,icon]) =>
+    `<button class="nav-link ${view===id?"on":""}" aria-current="${view===id?"page":"false"}" onclick="go('${id}')">
+      <span class="nav-icon" aria-hidden="true">${icon}</span><span>${label}</span>
+    </button>`
   ).join("");
 
   const pages = {
     dash:dashboard, exams:examsPage, add:addPage,
     bank:bankPage, prac:practicePage, rev:revisionPage,
+    coding:codingPage, codeRev:codingRevisionPage, notes:notesPage,
     set:settingsPage
   };
 
@@ -597,33 +992,25 @@ function dashboard() {
   const correct = Q.filter(q=>q.attempts && q.lastOk).length;
   const incorrect = Q.filter(q=>q.attempts && !q.lastOk).length;
   const revise = Q.filter(q=>status(q)==="wrong"||status(q)==="revise").length;
-
-  let h = `<div class="grid">`;
+  const chapters = S.exams.reduce((total,exam)=>total+exam.chapters.length,0);
+  const topics = S.exams.reduce((total,exam)=>
+    total+exam.chapters.reduce((chapterTotal,chapter)=>
+      chapterTotal+(chapter.topics||[]).length,0),0);
+  let h = `<h2>Dashboard</h2><h3 class="section-title">Study material</h3><div class="grid">`;
   [
-    ["Exams",S.exams.length],["Questions",Q.length],
+    ["Exams",S.exams.length],["Chapters",chapters],["Topics",topics],
+    ["MCQ questions",Q.length],["Coding questions",S.codingQuestions.length]
+  ].forEach(([label,value]) => {
+    h += `<div class="card stat"><b>${value}</b><span>${label}</span></div>`;
+  });
+  h += `</div><h3 class="section-title">MCQ practice progress</h3><div class="grid">`;
+  [
     ["Attempted",attempted],["Not attempted",Q.length-attempted],
     ["Last correct",correct],["Last incorrect",incorrect],
     ["To revise",revise]
   ].forEach(([label,value]) => {
     h += `<div class="card stat"><b>${value}</b><span>${label}</span></div>`;
   });
-  h += `</div><div class="card"><b>Chapter-wise accuracy</b>`;
-
-  let found = false;
-  S.exams.forEach(e => e.chapters.forEach(c => {
-    const qs = Q.filter(q=>q.examId===e.id && q.chapterId===c.id);
-    if(!qs.length) return;
-    found = true;
-    const attempts = qs.reduce((n,q)=>n+q.attempts,0);
-    const correctAnswers = qs.reduce((n,q)=>n+q.correct,0);
-    const accuracy = attempts ? Math.round(correctAnswers/attempts*100)+"%" : "Not started";
-    h += `<hr><div class="row" style="justify-content:space-between">
-      <span>${esc(e.name)} · ${esc(c.name)}</span>
-      <span class="mu">${qs.length} Qs · ${accuracy}</span>
-    </div>`;
-  }));
-
-  if(!found) h += `<p class="mu">My Exams mein exam aur chapter add karke shuru karein.</p>`;
   return h+"</div>";
 }
 
@@ -647,7 +1034,8 @@ function examsPage() {
       </div>`;
 
     e.chapters.forEach(c => {
-      const count = S.questions.filter(q=>q.chapterId===c.id).length;
+      const count = S.questions.filter(q=>q.chapterId===c.id).length+
+        S.codingQuestions.filter(q=>q.chapterId===c.id).length;
       h += `<hr><div class="row" style="justify-content:space-between">
         <b>${esc(c.name)} <span class="mu">(${count} Qs)</span></b>
         <span>${btn("Rename",`renameChapter('${e.id}','${c.id}')`)}
@@ -656,12 +1044,20 @@ function examsPage() {
 
       (c.topics||[]).forEach(t => {
         const n = S.questions.filter(q=>q.topicId===t.id).length;
+        const codeCount = S.codingQuestions.filter(q=>q.topicId===t.id).length;
         h += `<div class="row" style="justify-content:space-between;margin:8px 0 8px 12px">
-          <span>• ${esc(t.name)} <span class="mu">(${n})</span></span>
-          <span>${btn("+ Question",`addFor('${e.id}','${c.id}','${t.id}')`,"pri")}
+          <span>• ${esc(t.name)} <span class="mu">(${n} MCQ · ${codeCount} code)</span></span>
+          <span>${btn("+ MCQ",`addFor('${e.id}','${c.id}','${t.id}')`,"pri")}
+          ${btn("+ Coding Q",`addCodingFor('${e.id}','${c.id}','${t.id}')`)}
           ${btn("Rename",`renameTopic('${e.id}','${c.id}','${t.id}')`)}
           ${btn("Delete",`deleteTopic('${e.id}','${c.id}','${t.id}')`,"del")}</span>
         </div>`;
+        h += `<details style="margin:0 0 10px 12px">
+          <summary>${t.notes?"Edit topic notes":"Add topic notes"}${t.notes?` <span class="mu">(${t.notes.length} characters)</span>`:""}</summary>
+          <label for="topic-notes-${t.id}">Topic notes</label>
+          <textarea id="topic-notes-${t.id}" rows="4" placeholder="Topic ke concepts, definitions aur important points">${esc(t.notes)}</textarea>
+          <button onclick="saveTopicNotes('${t.id}')">Save topic notes</button>
+        </details>`;
       });
 
       h += `<div class="row">
@@ -682,7 +1078,7 @@ function examsPage() {
 window.addExam = function() {
   const name = $("examName").value.trim();
   if(!name) return message("Exam ka naam daalein.");
-  S.exams.push({id:uid(),name,chapters:[]});
+  S.exams.push({id:uid(),name,chapters:[],updatedAt:Date.now()});
   save();render();
 };
 
@@ -690,7 +1086,7 @@ window.addChapter = function(eid) {
   const input = $("chapter-"+eid);
   const name = input.value.trim();
   if(!name) return message("Chapter ka naam daalein.");
-  getExam(eid).chapters.push({id:uid(),name,topics:[]});
+  getExam(eid).chapters.push({id:uid(),name,topics:[],updatedAt:Date.now()});
   save();render();
 };
 
@@ -700,7 +1096,7 @@ window.addTopic = function(eid,cid) {
   if(!name) return message("Topic ka naam daalein.");
   const c = getChapter(eid,cid);
   c.topics ||= [];
-  c.topics.push({id:uid(),name});
+  c.topics.push({id:uid(),name,notes:"",updatedAt:Date.now()});
   save();render();
 };
 
@@ -729,44 +1125,240 @@ window.submitRename = () => {
 
 window.renameExam = id => {
   const e = getExam(id);
-  renamePrompt("Exam name",e.name,v=>{e.name=v;save();render();});
+  renamePrompt("Exam name",e.name,v=>{e.name=v;stamp(e);save();render();});
 };
 window.renameChapter = (eid,cid) => {
   const c = getChapter(eid,cid);
-  renamePrompt("Chapter name",c.name,v=>{c.name=v;save();render();});
+  renamePrompt("Chapter name",c.name,v=>{c.name=v;stamp(c);save();render();});
 };
 window.renameTopic = (eid,cid,tid) => {
   const t = getTopic(getChapter(eid,cid),tid);
-  renamePrompt("Topic name",t.name,v=>{t.name=v;save();render();});
+  renamePrompt("Topic name",t.name,v=>{t.name=v;stamp(t);save();render();});
 };
 
 window.deleteExam = id => confirmAction(
-  "Exam aur uske saare chapters, topics aur questions delete honge. Continue?",
+  "Exam aur uske saare chapters, topics, questions aur coding questions delete honge. Continue?",
   ()=>{
+    const exam = getExam(id);
+    markDeleted("exams",id);
+    exam.chapters.forEach(chapter=>{
+      markDeleted("chapters",chapter.id);
+      chapter.topics.forEach(topic=>markDeleted("topics",topic.id));
+    });
+    S.questions.filter(question=>question.examId===id)
+      .forEach(question=>markDeleted("questions",question.id));
+    S.codingQuestions.filter(question=>question.examId===id)
+      .forEach(question=>markDeleted("codingQuestions",question.id));
     S.exams = S.exams.filter(e=>e.id!==id);
     S.questions = S.questions.filter(q=>q.examId!==id);
+    S.codingQuestions = S.codingQuestions.filter(q=>q.examId!==id);
     save();render();
   }
 );
 
 window.deleteChapter = (eid,cid) => confirmAction(
-  "Chapter aur uske questions delete honge. Continue?",
+  "Chapter aur uske questions aur coding questions delete honge. Continue?",
   ()=>{
+    const chapter = getChapter(eid,cid);
+    markDeleted("chapters",cid);
+    chapter.topics.forEach(topic=>markDeleted("topics",topic.id));
+    S.questions.filter(question=>question.chapterId===cid)
+      .forEach(question=>markDeleted("questions",question.id));
+    S.codingQuestions.filter(question=>question.chapterId===cid)
+      .forEach(question=>markDeleted("codingQuestions",question.id));
     getExam(eid).chapters = getExam(eid).chapters.filter(c=>c.id!==cid);
     S.questions = S.questions.filter(q=>q.chapterId!==cid);
+    S.codingQuestions = S.codingQuestions.filter(q=>q.chapterId!==cid);
     save();render();
   }
 );
 
 window.deleteTopic = (eid,cid,tid) => confirmAction(
-  "Topic aur uske questions delete honge. Continue?",
+  "Topic aur uske questions aur coding questions delete honge. Continue?",
   ()=>{
     const c = getChapter(eid,cid);
+    markDeleted("topics",tid);
+    S.questions.filter(question=>question.topicId===tid)
+      .forEach(question=>markDeleted("questions",question.id));
+    S.codingQuestions.filter(question=>question.topicId===tid)
+      .forEach(question=>markDeleted("codingQuestions",question.id));
     c.topics = c.topics.filter(t=>t.id!==tid);
     S.questions = S.questions.filter(q=>q.topicId!==tid);
+    S.codingQuestions = S.codingQuestions.filter(q=>q.topicId!==tid);
     save();render();
   }
 );
+
+window.saveTopicNotes = function(tid) {
+  const topic = S.exams.flatMap(e=>e.chapters)
+    .flatMap(c=>c.topics||[]).find(t=>t.id===tid);
+  const input = $("topic-notes-"+tid);
+  if(!topic || !input) return message("Topic nahi mila. Page refresh karke phir try karein.");
+  topic.notes = input.value.trim();
+  stamp(topic);
+  save();
+  render();
+  setSync("Topic notes saved");
+};
+
+/* ---------- PERSONAL NOTES ---------- */
+
+function notesPage() {
+  const currentNote = noteEditId
+    ? S.notes.find(note=>note.id===noteEditId) : null;
+  const editor = noteEditorOpen ? `<div class="card note-editor">
+    <h3>${currentNote?"Edit note":"Create a note"}</h3>
+    <label for="noteTitle">Title</label>
+    <input id="noteTitle" maxlength="120" value="${esc(currentNote?.title||"")}" placeholder="e.g. Important formulas">
+    <label for="noteCategory">Subject or category <span class="mu">(optional)</span></label>
+    <input id="noteCategory" maxlength="60" value="${esc(currentNote?.category||"")}" placeholder="e.g. Mathematics · Chapter 2">
+    <label for="noteContent">Your note</label>
+    <textarea id="noteContent" placeholder="Write your key points, ideas, or revision notes...">${esc(currentNote?.content||"")}</textarea>
+    <div class="row">
+      <button class="pri" onclick="saveNote()">${currentNote?"Save changes":"Save note"}</button>
+      <button onclick="closeNoteEditor()">Cancel</button>
+    </div>
+  </div>` : "";
+  const visibleNotes = S.notes.map((note,index)=>({note,index}))
+    .sort((left,right)=>right.note.updatedAt-left.note.updatedAt)
+    .filter(({note})=>!noteSearch || `${note.title} ${note.category} ${note.content}`
+      .toLowerCase().includes(noteSearch));
+
+  let cards = "";
+  visibleNotes.forEach(({note,index})=>{
+    const expanded = expandedNotes.has(note.id);
+    cards += `<article class="card note-card" data-note-index="${index}">
+      <div class="note-card-header">
+        <div class="row" style="justify-content:space-between">
+          <h3>${esc(note.title)}</h3>
+          ${note.category?`<span class="tag">${esc(note.category)}</span>`:""}
+        </div>
+        <div class="note-meta"><span class="mu">Updated ${new Date(note.updatedAt).toLocaleDateString()}</span></div>
+      </div>
+      <div class="note-card-body">
+        <div class="note-content ${expanded?"":"preview"}">${esc(note.content)}</div>
+        <div class="row">
+          ${btn(expanded?"Minimize":"Read full note",`toggleNoteRead('${note.id}')`)}
+          ${btn("Edit",`editNote('${note.id}')`)}
+          ${btn("Delete",`deleteNote('${note.id}')`,"del")}
+        </div>
+      </div>
+    </article>`;
+  });
+
+  return `<div class="notes-toolbar">
+    <div><h2>My Notes</h2><p class="mu">Save important ideas and revisit them whenever you need.</p></div>
+    ${btn("+ New note","openNoteEditor()","pri")}
+  </div>
+  <div class="card">
+    <label for="notesSearch">Find a note</label>
+    <input id="notesSearch" value="${esc(noteSearch)}" oninput="filterNotes(this.value)" placeholder="Search title, subject, or note text">
+    <span class="mu" id="notesCount">${visibleNotes.length} ${visibleNotes.length===1?"note":"notes"}</span>
+  </div>
+  ${editor}
+  ${cards}
+  <div class="card note-empty" id="notesEmpty" ${visibleNotes.length?"hidden":""}>
+    <h3>${noteSearch?"No matching notes":"Your notes start here"}</h3>
+    <p class="mu">${noteSearch?"Try another search, or clear the search field.":"Create a note to keep your study ideas organized and easy to review."}</p>
+    <button class="pri" onclick="openNoteEditor()" ${noteSearch?"hidden":""}>Create your first note</button>
+  </div>`;
+}
+
+window.openNoteEditor = function() {
+  noteEditId = null;
+  noteEditorOpen = true;
+  render();
+  $("noteTitle").focus();
+};
+
+window.closeNoteEditor = function() {
+  noteEditId = null;
+  noteEditorOpen = false;
+  render();
+};
+
+window.editNote = function(id) {
+  if(!S.notes.some(note=>note.id===id))
+    return message("Note nahi mila. Page refresh karke phir try karein.");
+  noteEditId = id;
+  noteEditorOpen = true;
+  render();
+  $("noteTitle").focus();
+};
+
+window.saveNote = function() {
+  const title = $("noteTitle")?.value.trim() || "";
+  const content = $("noteContent")?.value.trim() || "";
+  const category = $("noteCategory")?.value.trim() || "";
+  if(!title) return message("Note ka title daalein.");
+  if(!content) return message("Note mein kuch content daalein.");
+
+  const timestamp = Date.now();
+  if(noteEditId) {
+    const note = S.notes.find(item=>item.id===noteEditId);
+    if(!note) return message("Note nahi mila. Page refresh karke phir try karein.");
+    note.title = title;
+    note.content = content;
+    note.category = category;
+    note.updatedAt = timestamp;
+  } else {
+    S.notes.unshift({
+      id:uid(),title,content,category,createdAt:timestamp,updatedAt:timestamp
+    });
+  }
+  noteEditId = null;
+  noteEditorOpen = false;
+  save();
+  render();
+  setSync("Note saved");
+};
+
+window.toggleNoteRead = function(id) {
+  if(expandedNotes.has(id)) expandedNotes.delete(id);
+  else expandedNotes.add(id);
+  render();
+};
+
+window.deleteNote = function(id) {
+  confirmAction("Is note ko permanently delete karein?",()=>{
+    S.notes = S.notes.filter(note=>note.id!==id);
+    markDeleted("notes",id);
+    expandedNotes.delete(id);
+    if(noteEditId===id) {
+      noteEditId = null;
+      noteEditorOpen = false;
+    }
+    save();
+    render();
+    setSync("Note deleted");
+  });
+};
+
+window.filterNotes = function(value) {
+  noteSearch = value.trim().toLowerCase();
+  let visibleCount = 0;
+  document.querySelectorAll(".note-card").forEach(card=>{
+    const note = S.notes[Number(card.dataset.noteIndex)];
+    const visible = !!note && `${note.title} ${note.category} ${note.content}`
+      .toLowerCase().includes(noteSearch);
+    card.hidden = !visible;
+    if(visible) visibleCount++;
+  });
+  const count = $("notesCount");
+  if(count) count.textContent = `${visibleCount} ${visibleCount===1?"note":"notes"}`;
+  const empty = $("notesEmpty");
+  if(empty) {
+    empty.hidden = visibleCount>0;
+    const heading = empty.querySelector("h3");
+    const description = empty.querySelector("p");
+    if(heading) heading.textContent = noteSearch ? "No matching notes" : "Your notes start here";
+    if(description) description.textContent = noteSearch
+      ? "Try another search, or clear the search field."
+      : "Create a note to keep your study ideas organized and easy to review.";
+    const createButton = empty.querySelector("button");
+    if(createButton) createButton.hidden = !!noteSearch;
+  }
+};
 
 /* ---------- ADD / EDIT QUESTIONS ---------- */
 
@@ -881,13 +1473,15 @@ window.saveQuestion = function() {
   };
 
   if(editId) {
-    Object.assign(S.questions.find(q=>q.id===editId),data);
+    const question = S.questions.find(q=>q.id===editId);
+    Object.assign(question,data);
+    stamp(question);
     editId = null;
     save();go("bank");
   } else {
     S.questions.push({
       id:uid(),bm:false,attempts:0,correct:0,wrong:0,
-      last:null,lastOk:false,revise:false,...data
+      last:null,lastOk:false,revise:false,...data,updatedAt:Date.now()
     });
     pre = {examId,chapterId,topicId};
     save();render();
@@ -960,7 +1554,7 @@ window.saveBulk = function() {
   const count = bulkQuestions.length;
   bulkQuestions.forEach(q=>S.questions.push({
     id:uid(),bm:false,attempts:0,correct:0,wrong:0,
-    last:null,lastOk:false,revise:false,
+    last:null,lastOk:false,revise:false,updatedAt:Date.now(),
     examId,chapterId,topicId,...q,src:"",note:""
   }));
 
@@ -968,6 +1562,301 @@ window.saveBulk = function() {
   save();render();
   setSync(count+" questions added; saving...");
 };
+
+/* ---------- CODING QUESTIONS ---------- */
+
+let codingSearch = "";
+
+window.addCodingFor = function(examId,chapterId,topicId) {
+  codingEditId = null;
+  codingPre = {examId,chapterId,topicId};
+  codingDraft = null;
+  editId = null;
+  pre = null;
+  view = "coding";
+  render();
+};
+
+window.startCodingQuestion = function() {
+  codingEditId = null;
+  codingPre = null;
+  codingDraft = {
+    title:"",prompt:"",constraints:"",solutions:{},
+    testCases:[{input:"",expected:""}],conceptNotes:"",
+    examId:S.exams[0]?.id||"",chapterId:"",topicId:"",revise:false
+  };
+  render();
+};
+
+window.editCodingQuestion = function(id) {
+  codingEditId = id;
+  codingPre = null;
+  codingDraft = null;
+  view = "coding";
+  render();
+};
+
+function codingFormValue() {
+  const question = codingEditId
+    ? S.codingQuestions.find(q=>q.id===codingEditId)
+    : null;
+  const base = codingDraft || question || {
+    title:"",prompt:"",constraints:"",solutions:{},testCases:[{input:"",expected:""}],
+    conceptNotes:"",examId:codingPre?.examId||S.exams[0]?.id||"",
+    chapterId:codingPre?.chapterId||"",topicId:codingPre?.topicId||""
+  };
+  const selectedExam = getExam(base.examId) || S.exams[0];
+  const selectedChapter = selectedExam
+    ? getChapter(selectedExam.id,base.chapterId) || selectedExam.chapters[0]
+    : null;
+  return {
+    ...base,
+    examId:selectedExam?.id||"",
+    chapterId:selectedChapter?.id||"",
+    topicId:getTopic(selectedChapter,base.topicId)?.id ||
+      selectedChapter?.topics?.[0]?.id || ""
+  };
+}
+
+function captureCodingDraft() {
+  const current = codingFormValue();
+  if(!$("codeTitle")) return current;
+  current.title = $("codeTitle").value;
+  current.prompt = $("codePrompt").value;
+  current.constraints = $("codeConstraints").value;
+  current.conceptNotes = $("codeNotes").value;
+  current.examId = $("codeExam").value;
+  current.chapterId = $("codeChapter").value;
+  current.topicId = $("codeTopic").value;
+  current.revise = $("codeRevise").checked;
+  current.solutions = {};
+  CODE_LANGUAGES.forEach(([id]) => {
+    current.solutions[id] = $("solution-"+id).value;
+  });
+  current.testCases = current.testCases.map((testCase,index)=>({
+    input:$("case-input-"+index).value,
+    expected:$("case-expected-"+index).value
+  }));
+  return current;
+}
+
+function codingQuestionForm() {
+  const q = codingFormValue();
+  if(!S.exams.length || !S.exams.some(e=>e.chapters.some(c=>c.topics?.length))) {
+    return `<div class="card">
+      <p>Pehle My Exams mein exam, chapter aur topic add karein.</p>
+      ${btn("Go to My Exams","go('exams')","pri")}
+    </div>`;
+  }
+
+  const selectedExam = getExam(q.examId) || S.exams[0];
+  const selectedChapter = getChapter(selectedExam.id,q.chapterId) || selectedExam.chapters[0];
+  const topics = selectedChapter?.topics || [];
+  const cases = Array.isArray(q.testCases) ? q.testCases : [];
+  let h = `<div class="card">
+    <div class="row" style="justify-content:space-between">
+      <b>${codingEditId?"Edit coding question":"Add coding question"}</b>
+      ${btn("Cancel","go('coding')")}
+    </div>
+    <p class="mu">Is stage mein code aur test cases save/review honge; app code execute karke pass/fail abhi nahi dikhata.</p>
+    <label>Exam</label><select id="codeExam" onchange="refreshCodingSelects()">
+      ${S.exams.map(e=>`<option value="${esc(e.id)}" ${e.id===selectedExam.id?"selected":""}>${esc(e.name)}</option>`).join("")}
+    </select>
+    <label>Chapter</label><select id="codeChapter" onchange="refreshCodingSelects()">
+      ${selectedExam.chapters.map(c=>`<option value="${esc(c.id)}" ${c.id===selectedChapter?.id?"selected":""}>${esc(c.name)}</option>`).join("")}
+    </select>
+    <label>Topic</label><select id="codeTopic">
+      ${topics.map(t=>`<option value="${esc(t.id)}" ${t.id===q.topicId?"selected":""}>${esc(t.name)}</option>`).join("")}
+    </select>
+    <label>Question title</label><input id="codeTitle" value="${esc(q.title)}" placeholder="e.g. Two Sum">
+    <label>Problem statement</label><textarea id="codePrompt" rows="5" placeholder="Question aur expected task likhein">${esc(q.prompt)}</textarea>
+    <label>Constraints / extra details</label><textarea id="codeConstraints" rows="3" placeholder="Input limits, assumptions, edge cases">${esc(q.constraints)}</textarea>
+  </div>
+  <div class="card">
+    <b>Test cases (${cases.length})</b>
+    <p class="mu">Har case ke input aur expected output ko alag rakhein. Ye abhi save honge; automatic run/check baad mein add kiya ja sakta hai.</p>
+    ${cases.map((testCase,index)=>`<div class="card">
+      <div class="row" style="justify-content:space-between"><b>Test case ${index+1}</b>
+        ${btn("Remove",`removeCodingTestCase(${index})`,"del")}</div>
+      <label>Input</label><textarea class="code" id="case-input-${index}" rows="3" placeholder="Input for this test case">${esc(testCase.input)}</textarea>
+      <label>Expected output</label><textarea class="code" id="case-expected-${index}" rows="3" placeholder="Expected output">${esc(testCase.expected)}</textarea>
+    </div>`).join("")}
+    <button onclick="addCodingTestCase()">+ Add test case</button>
+  </div>
+  <div class="card">
+    <b>Code drafts</b>
+    <p class="mu">Solution draft har language ke liye alag save hota hai.</p>
+    ${CODE_LANGUAGES.map(([id,label])=>`<details ${q.solutions[id]?"":"open"}>
+      <summary>${label}</summary>
+      <label for="solution-${id}">${label} code</label>
+      <textarea class="code" id="solution-${id}" rows="8" spellcheck="false" placeholder="${label} solution draft">${esc(q.solutions[id]||"")}</textarea>
+    </details>`).join("")}
+    <label>Concept notes for revision</label>
+    <textarea id="codeNotes" rows="5" placeholder="Approach, complexity, concepts, mistakes to remember">${esc(q.conceptNotes)}</textarea>
+    <label><input id="codeRevise" type="checkbox" style="width:auto;margin:0 6px 0 0" ${q.revise?"checked":""}>Mark for revision</label>
+    <div class="row" style="margin-top:12px">
+      <button class="pri" onclick="saveCodingQuestion()">${codingEditId?"Update coding question":"Save coding question"}</button>
+    </div>
+  </div>`;
+  return h;
+}
+
+window.refreshCodingSelects = function() {
+  const draft = captureCodingDraft();
+  const exam = getExam($("codeExam").value);
+  const chapterId = $("codeChapter").value;
+  const chapter = exam?.chapters.find(c=>c.id===chapterId);
+  draft.examId = exam?.id||"";
+  draft.chapterId = chapter?.id||"";
+  draft.topicId = chapter?.topics?.[0]?.id||"";
+  codingDraft = draft;
+  render();
+};
+
+window.addCodingTestCase = function() {
+  const draft = captureCodingDraft();
+  draft.testCases.push({input:"",expected:""});
+  codingDraft = draft;
+  render();
+};
+
+window.removeCodingTestCase = function(index) {
+  const draft = captureCodingDraft();
+  if(draft.testCases.length<=1) return message("Kam se kam ek test case rakhein.");
+  draft.testCases.splice(index,1);
+  codingDraft = draft;
+  render();
+};
+
+window.saveCodingQuestion = function() {
+  const data = captureCodingDraft();
+  if(!data.title.trim() || !data.prompt.trim() || !data.examId ||
+    !data.chapterId || !data.topicId || !data.testCases.length) {
+    return message("Title, problem statement, exam/chapter/topic aur kam se kam ek test case zaroori hai.");
+  }
+  data.title = data.title.trim();
+  data.prompt = data.prompt.trim();
+  data.constraints = data.constraints.trim();
+  data.conceptNotes = data.conceptNotes.trim();
+  data.testCases = data.testCases.map(testCase=>({
+    input:testCase.input,
+    expected:testCase.expected
+  }));
+  data.revise = $("codeRevise").checked;
+  data.updatedAt = Date.now();
+
+  if(codingEditId) {
+    const question = S.codingQuestions.find(q=>q.id===codingEditId);
+    if(!question) return message("Coding question nahi mila. Page refresh karke phir try karein.");
+    Object.assign(question,data);
+    codingEditId = null;
+    codingDraft = null;
+    save();
+    render();
+    return;
+  }
+
+  S.codingQuestions.push({id:uid(),...data});
+  codingDraft = null;
+  save();
+  render();
+  setSync("Coding question saved");
+};
+
+window.deleteCodingQuestion = id => confirmAction("Delete this coding question and its test cases?",()=>{
+  markDeleted("codingQuestions",id);
+  S.codingQuestions = S.codingQuestions.filter(q=>q.id!==id);
+  save();render();
+});
+
+window.toggleCodingRevision = id => {
+  const question = S.codingQuestions.find(q=>q.id===id);
+  if(!question) return;
+  question.revise = !question.revise;
+  stamp(question);
+  save();render();
+};
+
+window.setCodingSearch = value => {
+  codingSearch = value;
+  render();
+  const input = $("codingSearch");
+  input?.focus();
+  if(input) input.setSelectionRange(value.length,value.length);
+};
+
+function codingQuestionCard(q) {
+  return `<div class="card">
+    <b>${esc(q.title)}</b>
+    <div class="row" style="margin:8px 0">
+      <span class="tag">${esc(questionLocation(q)||"Uncategorized")}</span>
+      <span class="tag">${q.testCases.length} test cases saved</span>
+      ${q.revise?'<span class="tag">Marked for revision</span>':""}
+    </div>
+    <p>${esc(q.prompt)}</p>
+    ${q.conceptNotes?`<details><summary>Concept notes</summary><p>${esc(q.conceptNotes)}</p></details>`:""}
+    <div class="row" style="margin-top:8px">
+      ${btn("Edit",`editCodingQuestion('${q.id}')`)}
+      ${btn(q.revise?"Unmark revision":"Mark for revision",`toggleCodingRevision('${q.id}')`)}
+      ${btn("Delete",`deleteCodingQuestion('${q.id}')`,"del")}
+    </div>
+  </div>`;
+}
+
+function codingPage() {
+  if(codingEditId || codingDraft || codingPre) return codingQuestionForm();
+  const search = codingSearch.trim().toLowerCase();
+  const questions = S.codingQuestions.filter(q=>
+    !search || `${q.title} ${q.prompt} ${q.conceptNotes}`.toLowerCase().includes(search)
+  );
+  return `<div class="card">
+    <div class="row" style="justify-content:space-between">
+      <b>Coding questions</b>${btn("+ Add coding question","startCodingQuestion()","pri")}
+    </div>
+    <p class="mu">Questions, C++/Java/Python/JavaScript code drafts, concept notes aur multiple test cases yahan save/review karein. Code execution abhi available nahi hai.</p>
+    <label>Search coding questions</label>
+    <input id="codingSearch" value="${esc(codingSearch)}" oninput="setCodingSearch(this.value)" placeholder="Title, question ya concept notes">
+    <span class="mu">${questions.length} coding questions</span>
+  </div>${questions.map(codingQuestionCard).join("") ||
+    `<div class="card">Abhi coding question nahi hai. My Exams ke kisi topic par “+ Coding Q” dabayein ya yahan naya question banayein.</div>`}`;
+}
+
+function codingRevisionCard(q) {
+  return `<div class="card">
+    <div class="row" style="justify-content:space-between">
+      <b>${esc(q.title)}</b><span class="tag">${esc(questionLocation(q)||"Uncategorized")}</span>
+    </div>
+    <p>${esc(q.prompt)}</p>
+    ${q.constraints?`<p><b>Constraints:</b> ${esc(q.constraints)}</p>`:""}
+    <h4>Concept notes</h4>
+    <p>${q.conceptNotes?esc(q.conceptNotes):'<span class="mu">No concept notes added.</span>'}</p>
+    <details><summary>Review ${q.testCases.length} test cases</summary>
+      ${q.testCases.map((testCase,index)=>`<div class="card">
+        <b>Test case ${index+1}</b><p><b>Input</b></p><pre>${esc(testCase.input)}</pre>
+        <p><b>Expected output</b></p><pre>${esc(testCase.expected)}</pre>
+      </div>`).join("")}
+    </details>
+    <details><summary>Review code drafts</summary>
+      ${CODE_LANGUAGES.map(([id,label])=>q.solutions[id]
+        ? `<h4>${label}</h4><pre><code>${esc(q.solutions[id])}</code></pre>`
+        : "").join("") || '<p class="mu">No code drafts saved.</p>'}
+    </details>
+    <div class="row">
+      ${btn("Edit notes / code / test cases",`editCodingQuestion('${q.id}')`)}
+      ${btn("Remove from revision",`toggleCodingRevision('${q.id}')`)}
+    </div>
+  </div>`;
+}
+
+function codingRevisionPage() {
+  const questions = S.codingQuestions.filter(q=>q.revise);
+  return `<div class="card">
+    <b>Coding revision</b>
+    <p class="mu">Marked coding questions ke concept notes, code drafts aur expected test cases yahan review karein.</p>
+    <span>${questions.length} questions for revision</span>
+  </div>${questions.map(codingRevisionCard).join("") ||
+    '<div class="card">Koi coding question revision ke liye mark nahi hai. Coding section mein “Mark for revision” use karein.</div>'}`;
+}
 
 /* ---------- QUESTION BANK / FILTERS ---------- */
 
@@ -1048,12 +1937,13 @@ function bankPage() {
 window.toggleBookmark = id => {
   const q = S.questions.find(q=>q.id===id);
   if(!q) return;
-  q.bm = !q.bm;save();render();
+  q.bm = !q.bm;stamp(q);save();render();
 };
 window.editQuestion = id => {
   editId = id;pre = null;go("add");
 };
 window.deleteQuestion = id => confirmAction("Delete this question?",()=>{
+  markDeleted("questions",id);
   S.questions = S.questions.filter(q=>q.id!==id);
   save();render();
 });
@@ -1114,11 +2004,7 @@ window.pickAnswer = function(i) {
 
   practice.picked = i;
   const correct = i===q.ans;
-  q.attempts++;
-  if(correct) q.correct++;
-  else q.wrong++;
-  q.lastOk = correct;
-  q.last = new Date().toISOString().slice(0,10);
+  recordQuestionAttempt(q,correct);
   save();render();
 };
 
@@ -1126,6 +2012,7 @@ window.savePracticeNote = function() {
   const q = S.questions.find(q=>q.id===practice.ids[practice.index]);
   if(q) {
     q.note = $("practiceNote").value.trim();
+    stamp(q);
     save();message("Note saved.");
   }
 };
@@ -1134,6 +2021,7 @@ window.toggleRevision = id => {
   const q = S.questions.find(q=>q.id===id);
   if(q) {
     q.revise = !q.revise;
+    stamp(q);
     save();render();
   }
 };
@@ -1233,7 +2121,7 @@ function settingsPage() {
     <p>${esc(user?.email||"")}</p>
     <p class="mu">Questions aapke browser mein local copy aur aapke Google Drive mein ${DRIVE_FILE_NAME} ke roop mein save hote hain.</p>
     ${driveTokenValid()
-      ? btn("Sync now / restore from this device","syncDriveNow()")
+      ? btn("Sync now / merge devices","syncDriveNow()")
       : btn("Connect Google Drive","connectDrive()","pri")}
     <button class="pri" onclick="loginBtn()">Sign out</button>
   </div>
@@ -1243,7 +2131,7 @@ function settingsPage() {
   </div>
   <div class="card">
     <h3>Data backup</h3>
-    <p class="mu">Drive file delete karne ke baad, isi device par Google Drive reconnect karke Sync now dabayein. Is browser ki local copy Drive par dobara upload hogi. Har device ki local copy alag hoti hai.</p>
+    <p class="mu">Har device par Google Drive connect karke Sync now karein. App local aur Drive data merge karega; alag devices ke practice attempts judenge. Ek hi question ya note ko dono devices par alag edit karne par latest edit rakha jayega. Drive file delete ho jaaye, tab bhi is browser ki local copy se Sync now par nayi Drive file ban sakti hai.</p>
     <button onclick="exportData()">Download backup</button>
     <button onclick="document.getElementById('imp').click()">Restore backup</button>
   </div>`;
@@ -1274,10 +2162,10 @@ window.importData = function(input) {
   file.text().then(text=>{
     const data = JSON.parse(text);
     if(!validData(data)) throw new Error("Invalid backup");
-    confirmAction("Current data replace ho jayega. Restore karein?",()=>{
-      S = normalizeData(data);
+    confirmAction("Backup ka data current questions, notes aur progress ke saath merge hoga. Restore karein?",()=>{
+      S = mergeData(S,data);
       save();render();
-      setSync("Backup restored; syncing...");
+      setSync("Backup merged; syncing...");
     });
   }).catch(()=>{
     message("Backup file valid nahi hai.");
