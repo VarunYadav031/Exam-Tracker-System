@@ -8,20 +8,20 @@ Exam Prep Tracker is a web app for organizing exam preparation and practicing mu
 
 Sign in with Google and connect Google Drive to use the app. Questions and study progress are saved both in the current browser and in a visible `ExamPrepData.json` file in that user's own Google Drive. This avoids storing question data in Firestore; each user uses their own Drive storage.
 
-Personal notes can be created, categorized, searched, edited, and read in full or minimized previews. Topic notes, personal notes, coding questions, code drafts, test-case inputs/expected outputs, coding revision notes, and the resized profile photo are included in the same Drive file and downloadable backup. The coding section currently stores and displays code and test cases; it does not execute code or report test pass/fail results.
+Personal notes can be created, categorized, linked to an exam, chapter, and topic, searched, filtered by study location, edited, and read in full or minimized previews. Topic notes, personal notes, coding questions, code drafts, test-case inputs/expected outputs, coding revision notes, and the resized profile photo are included in the same Drive file and downloadable backup. The coding section currently stores and displays code and test cases; it does not execute code or report test pass/fail results.
 
 ## Features
 
 - Create exams with chapters and topics.
 - Save notes on each topic before or alongside its questions.
-- Create and edit formatted standalone notes with a sticky editing toolbar, text and heading colors, highlights, images, font sizes, alignment, headings, lists, quotes, undo/redo, clear formatting, and zoom controls. Paste formatted text, tables, and images directly from ChatGPT or other documents; Markdown image links (including OpenAI inline-image links) are converted into note images, and clipboard images keep their original quality when small and are resized/compressed at higher resolution when needed. Organize notes with optional categories, search them, and expand or minimize each note while reading.
+- Create and edit formatted notes with a sticky editing toolbar, text and heading colors, highlights, images, font sizes, alignment, headings, lists, quotes, undo/redo, clear formatting, and zoom controls. Link notes to an exam, chapter, and topic, then filter notes by that location. Paste formatted text, tables, and images directly from ChatGPT or other documents; Markdown image links (including OpenAI inline-image links) are converted into note images. Uploaded images retain more detail with a higher-resolution, higher-quality compression target, and expanded notes display images at their available natural size. Organize notes with optional categories, search them, and expand or minimize each note while reading.
 - Preview a visual landing page explaining all study sections before signing in, including how to use the question bank, practice, revision, coding, and notes.
 - Use an icon-labeled vertical navigation and see account name, photo, and email when provided by the sign-in account.
 - Upload or change a profile photo; a resized copy is saved with the account's Drive data and backup.
 - View total exams, chapters, topics, MCQ questions, coding questions, and overall MCQ practice progress on the dashboard.
 - Add questions individually or import multiple-choice questions in bulk.
 - From an existing question's edit form, save its changes and immediately start adding another question to the same topic, or delete that question.
-- After saving, open the selected topic to review and edit its MCQs; practice attempts are tracked per device and retained with saved progress.
+- After saving, open the selected topic to review, edit, or delete each MCQ directly in its topic list; practice attempts are tracked per device and retained with saved progress.
 - Filter the Question Bank by exam, chapter, topic, and status; search, practice, edit, and delete individual questions or select multiple questions for bulk deletion. Use “Select all filtered questions” to remove a chosen group, such as 10 of 90 questions.
 - Practice questions and review revision questions.
 - Organize coding questions by topic, save C++, Java, Python, and JavaScript code drafts, add multiple test cases, and review concept notes in Coding Revision.

@@ -204,6 +204,7 @@ let noteEditorOpen = false;
 let noteSelectionRange = null;
 let noteZoom = 1;
 let noteSearch = "";
+let noteFilters = {examId:"",chapterId:"",topicId:""};
 let expandedNotes = new Set();
 let bulkQuestions = [];
 let practice = {ids:[], index:0, picked:null};
@@ -261,7 +262,8 @@ const NOTE_TAGS = new Set([
   "TBODY","TR","TH","TD","A","IMG"
 ]);
 const MAX_NOTE_CONTENT_SIZE = 2400000;
-const MAX_NOTE_IMAGE_SIZE = 800*1024;
+const MAX_NOTE_IMAGE_SIZE = 1150*1024;
+const MAX_NOTE_IMAGE_DATA_URL_LENGTH = 1700000;
 
 function sanitizeNoteHtml(html, {allowLargeImages = false} = {}) {
   const parsed = new DOMParser().parseFromString(String(html || ""), "text/html");
@@ -283,7 +285,7 @@ function sanitizeNoteHtml(html, {allowLargeImages = false} = {}) {
         if(child.tagName === "A" && attr.name === "title") return;
         if(child.tagName === "IMG" && attr.name === "src" &&
           (/^data:image\/(?:jpeg|png|webp|gif|avif|bmp);base64,[A-Za-z0-9+/]+={0,2}$/.test(attr.value) &&
-            attr.value.length <= (allowLargeImages ? 14*1024*1024 : 1100000) ||
+            attr.value.length <= (allowLargeImages ? 14*1024*1024 : MAX_NOTE_IMAGE_DATA_URL_LENGTH) ||
             /^https:\/\//i.test(attr.value) ||
             allowLargeImages && /^blob:/i.test(attr.value))) return;
         if(child.tagName === "IMG" && attr.name === "alt") return;
@@ -485,6 +487,9 @@ function normalizeData(data) {
     note.title = String(note.title || "");
     note.content = String(note.content || "");
     note.category = String(note.category || "");
+    note.examId = String(note.examId || "");
+    note.chapterId = String(note.chapterId || "");
+    note.topicId = String(note.topicId || "");
     note.createdAt = Number(note.createdAt || note.updatedAt || Date.now());
     note.updatedAt = Number(note.updatedAt || note.createdAt);
   });
@@ -1274,6 +1279,7 @@ function examsPage() {
                 <span class="tag">Attempts: ${questionAttemptCount(question)}</span>
                 <span class="tag">Answer: ${"ABCD"[question.ans]}</span>
                 ${btn("Edit",`editQuestion('${question.id}')`)}
+                ${btn("Delete",`deleteQuestion('${question.id}')`,"del")}
               </div>
             </div>`;
           });
@@ -1430,15 +1436,66 @@ window.saveTopicNotes = function(tid) {
 
 /* ---------- PERSONAL NOTES ---------- */
 
+function findNoteExam(id) {
+  return S.exams.find(exam=>exam.id===id);
+}
+
+function findNoteChapter(examId,chapterId) {
+  return findNoteExam(examId)?.chapters.find(chapter=>chapter.id===chapterId);
+}
+
+function noteLocation(note) {
+  const exam = findNoteExam(note.examId);
+  const chapter = exam && findNoteChapter(exam.id,note.chapterId);
+  const topic = chapter?.topics.find(item=>item.id===note.topicId);
+  return [exam?.name,chapter?.name,topic?.name].filter(Boolean).join(" · ") || "General note";
+}
+
+function noteSelectOptions(items,placeholder,selectedId="") {
+  return `<option value="">${esc(placeholder)}</option>${items.map(item=>
+    `<option value="${esc(item.id)}" ${item.id===selectedId?"selected":""}>${esc(item.name)}</option>`
+  ).join("")}`;
+}
+
+function renderNoteFilterSelects() {
+  const examSelect = $("noteFilterExam");
+  if(!examSelect) return;
+  const examId = noteFilters.examId;
+  const chapterId = noteFilters.chapterId;
+  const topicId = noteFilters.topicId;
+  examSelect.innerHTML = noteSelectOptions(S.exams,"All exams",examId);
+  $("noteFilterChapter").innerHTML = noteSelectOptions(
+    findNoteExam(examId)?.chapters||[],"All chapters",chapterId
+  );
+  $("noteFilterTopic").innerHTML = noteSelectOptions(
+    findNoteChapter(examId,chapterId)?.topics||[],"All topics",topicId
+  );
+}
+
 function notesPage() {
   const currentNote = noteEditId
     ? S.notes.find(note=>note.id===noteEditId) : null;
+  const selectedExamId = currentNote?.examId||"";
+  const selectedChapterId = currentNote?.chapterId||"";
+  const selectedTopicId = currentNote?.topicId||"";
   const editor = noteEditorOpen ? `<div class="card note-editor">
     <h3>${currentNote?"Edit note":"Create a note"}</h3>
     <label for="noteTitle">Title</label>
     <input id="noteTitle" maxlength="120" value="${esc(currentNote?.title||"")}" placeholder="e.g. Important formulas">
     <label for="noteCategory">Subject or category <span class="mu">(optional)</span></label>
     <input id="noteCategory" maxlength="60" value="${esc(currentNote?.category||"")}" placeholder="e.g. Mathematics · Chapter 2">
+    <label for="noteExam">Organize under exam, chapter, and topic <span class="mu">(optional)</span></label>
+    <div class="row">
+      <select id="noteExam" aria-label="Exam" onchange="refreshNoteLocationSelects('exam')">
+        ${noteSelectOptions(S.exams,"Choose exam",selectedExamId)}
+      </select>
+      <select id="noteChapter" aria-label="Chapter" onchange="refreshNoteLocationSelects('chapter')">
+        ${noteSelectOptions(findNoteExam(selectedExamId)?.chapters||[],"Choose chapter",selectedChapterId)}
+      </select>
+      <select id="noteTopic" aria-label="Topic">
+        ${noteSelectOptions(findNoteChapter(selectedExamId,selectedChapterId)?.topics||[],"Choose topic",selectedTopicId)}
+      </select>
+    </div>
     <label for="noteContent">Your note</label>
     <div class="note-format-toolbar" role="toolbar" aria-label="Note formatting">
       <button type="button" title="Bold" aria-label="Bold" onmousedown="event.preventDefault()" onclick="formatNote('bold')"><strong>B</strong></button>
@@ -1485,8 +1542,9 @@ function notesPage() {
   </div>` : "";
   const visibleNotes = S.notes.map((note,index)=>({note,index}))
     .sort((left,right)=>right.note.updatedAt-left.note.updatedAt)
-    .filter(({note})=>!noteSearch || `${note.title} ${note.category} ${notePlainText(note.content)}`
-      .toLowerCase().includes(noteSearch));
+    .filter(({note})=>noteMatchesFilters(note) &&
+      (!noteSearch || `${note.title} ${note.category} ${noteLocation(note)} ${notePlainText(note.content)}`
+        .toLowerCase().includes(noteSearch)));
 
   let cards = "";
   visibleNotes.forEach(({note,index})=>{
@@ -1497,7 +1555,10 @@ function notesPage() {
           <h3>${esc(note.title)}</h3>
           ${note.category?`<span class="tag">${esc(note.category)}</span>`:""}
         </div>
-        <div class="note-meta"><span class="mu">Updated ${new Date(note.updatedAt).toLocaleDateString()}</span></div>
+        <div class="note-meta">
+          <span class="tag">${esc(noteLocation(note))}</span>
+          <span class="mu">Updated ${new Date(note.updatedAt).toLocaleDateString()}</span>
+        </div>
       </div>
       <div class="note-card-body">
         <div class="note-content ${expanded?"":"preview"}" style="--note-zoom:${noteZoom}">${formatNoteContent(note.content)}</div>
@@ -1525,16 +1586,63 @@ function notesPage() {
   <div class="card">
     <label for="notesSearch">Find a note</label>
     <input id="notesSearch" value="${esc(noteSearch)}" oninput="filterNotes(this.value)" placeholder="Search title, subject, or note text">
+    <div class="row" style="margin-top:8px">
+      <select id="noteFilterExam" aria-label="Filter notes by exam" onchange="changeNoteFilter('examId',this.value)">
+        ${noteSelectOptions(S.exams,"All exams",noteFilters.examId)}
+      </select>
+      <select id="noteFilterChapter" aria-label="Filter notes by chapter" onchange="changeNoteFilter('chapterId',this.value)">
+        ${noteSelectOptions(findNoteExam(noteFilters.examId)?.chapters||[],"All chapters",noteFilters.chapterId)}
+      </select>
+      <select id="noteFilterTopic" aria-label="Filter notes by topic" onchange="changeNoteFilter('topicId',this.value)">
+        ${noteSelectOptions(findNoteChapter(noteFilters.examId,noteFilters.chapterId)?.topics||[],"All topics",noteFilters.topicId)}
+      </select>
+    </div>
     <span class="mu" id="notesCount">${visibleNotes.length} ${visibleNotes.length===1?"note":"notes"}</span>
   </div>
   ${editor}
   ${cards}
   <div class="card note-empty" id="notesEmpty" ${visibleNotes.length?"hidden":""}>
-    <h3>${noteSearch?"No matching notes":"Your notes start here"}</h3>
-    <p class="mu">${noteSearch?"Try another search, or clear the search field.":"Create a note to keep your study ideas organized and easy to review."}</p>
-    <button class="pri" onclick="openNoteEditor()" ${noteSearch?"hidden":""}>Create your first note</button>
+    <h3>${noteSearch||hasNoteFilters()?"No matching notes":"Your notes start here"}</h3>
+    <p class="mu">${noteSearch||hasNoteFilters()?"Try another search or clear the filters.":"Create a note to keep your study ideas organized and easy to review."}</p>
+    <button class="pri" onclick="openNoteEditor()" ${noteSearch||hasNoteFilters()?"hidden":""}>Create your first note</button>
   </div>`;
 }
+
+function noteMatchesFilters(note) {
+  if(noteFilters.examId && note.examId!==noteFilters.examId) return false;
+  if(noteFilters.chapterId && note.chapterId!==noteFilters.chapterId) return false;
+  if(noteFilters.topicId && note.topicId!==noteFilters.topicId) return false;
+  return true;
+}
+
+function hasNoteFilters() {
+  return !!(noteFilters.examId||noteFilters.chapterId||noteFilters.topicId);
+}
+
+window.refreshNoteLocationSelects = function(changed) {
+  const examId = $("noteExam")?.value||"";
+  const chapterId = changed==="exam" ? "" : $("noteChapter")?.value||"";
+  $("noteChapter").innerHTML = noteSelectOptions(
+    findNoteExam(examId)?.chapters||[],"Choose chapter",chapterId
+  );
+  const topicId = changed==="exam"||changed==="chapter" ? "" : $("noteTopic")?.value||"";
+  $("noteTopic").innerHTML = noteSelectOptions(
+    findNoteChapter(examId,chapterId)?.topics||[],"Choose topic",topicId
+  );
+};
+
+window.changeNoteFilter = function(key,value) {
+  if(!["examId","chapterId","topicId"].includes(key)) return;
+  noteFilters[key] = value;
+  if(key==="examId") {
+    noteFilters.chapterId = "";
+    noteFilters.topicId = "";
+  } else if(key==="chapterId") {
+    noteFilters.topicId = "";
+  }
+  renderNoteFilterSelects();
+  window.filterNotes(noteSearch);
+};
 
 window.openNoteEditor = function() {
   noteEditId = null;
@@ -1734,27 +1842,31 @@ async function noteImageFileDataUrl(file) {
     const image = new Image();
     image.src = objectUrl;
     await image.decode();
-    let scale = Math.min(1,2000/Math.max(image.width,image.height));
+    let scale = Math.min(1,3200/Math.max(image.width,image.height));
     let blob = null;
 
-    for(let attempt=0;attempt<12;attempt++) {
+    for(let attempt=0;attempt<16;attempt++) {
       const canvas = document.createElement("canvas");
       canvas.width = Math.max(1,Math.round(image.width*scale));
       canvas.height = Math.max(1,Math.round(image.height*scale));
       const context = canvas.getContext("2d");
       if(!context) throw new Error("Image processing is unavailable in this browser.");
-      if(file.type!=="image/png") {
-        context.fillStyle = "#fff";
-        context.fillRect(0,0,canvas.width,canvas.height);
-      }
       context.drawImage(image,0,0,canvas.width,canvas.height);
-      const outputType = file.type==="image/png" ? "image/png" : "image/jpeg";
-      blob = await new Promise(resolve=>canvas.toBlob(
-        resolve,outputType,outputType==="image/jpeg"?0.9:undefined
-      ));
+      blob = await new Promise(resolve=>canvas.toBlob(resolve,"image/webp",0.94));
+      if(blob?.type!=="image/webp") {
+        const outputType = file.type==="image/png" ? "image/png" : "image/jpeg";
+        if(outputType==="image/jpeg") {
+          context.fillStyle = "#fff";
+          context.fillRect(0,0,canvas.width,canvas.height);
+          context.drawImage(image,0,0,canvas.width,canvas.height);
+        }
+        blob = await new Promise(resolve=>canvas.toBlob(
+          resolve,outputType,outputType==="image/jpeg"?0.94:undefined
+        ));
+      }
       if(!blob) throw new Error("This image could not be compressed.");
       if(blob.size<=MAX_NOTE_IMAGE_SIZE) break;
-      scale *= 0.9;
+      scale *= 0.95;
     }
 
     if(!blob || blob.size>MAX_NOTE_IMAGE_SIZE)
@@ -2146,6 +2258,9 @@ window.saveNote = function() {
   const title = $("noteTitle")?.value.trim() || "";
   const content = sanitizeNoteHtml($("noteContent")?.innerHTML || "").trim();
   const category = $("noteCategory")?.value.trim() || "";
+  const examId = $("noteExam")?.value||"";
+  const chapterId = examId ? $("noteChapter")?.value||"" : "";
+  const topicId = chapterId ? $("noteTopic")?.value||"" : "";
   if(!title) return message("Note ka title daalein.");
   if(!notePlainText(content) && !/<img\b/i.test(content))
     return message("Note mein kuch content daalein.");
@@ -2159,10 +2274,14 @@ window.saveNote = function() {
     note.title = title;
     note.content = content;
     note.category = category;
+    note.examId = examId;
+    note.chapterId = chapterId;
+    note.topicId = topicId;
     note.updatedAt = timestamp;
   } else {
     S.notes.unshift({
-      id:uid(),title,content,category,createdAt:timestamp,updatedAt:timestamp
+      id:uid(),title,content,category,examId,chapterId,topicId,
+      createdAt:timestamp,updatedAt:timestamp
     });
   }
   noteEditId = null;
@@ -2198,8 +2317,9 @@ window.filterNotes = function(value) {
   let visibleCount = 0;
   document.querySelectorAll(".note-card").forEach(card=>{
     const note = S.notes[Number(card.dataset.noteIndex)];
-    const visible = !!note && `${note.title} ${note.category} ${notePlainText(note.content)}`
-      .toLowerCase().includes(noteSearch);
+    const visible = !!note && noteMatchesFilters(note) &&
+      `${note.title} ${note.category} ${noteLocation(note)} ${notePlainText(note.content)}`
+        .toLowerCase().includes(noteSearch);
     card.hidden = !visible;
     if(visible) visibleCount++;
   });
@@ -2210,12 +2330,14 @@ window.filterNotes = function(value) {
     empty.hidden = visibleCount>0;
     const heading = empty.querySelector("h3");
     const description = empty.querySelector("p");
-    if(heading) heading.textContent = noteSearch ? "No matching notes" : "Your notes start here";
+    if(heading) heading.textContent = noteSearch||hasNoteFilters() ? "No matching notes" : "Your notes start here";
     if(description) description.textContent = noteSearch
       ? "Try another search, or clear the search field."
+      : hasNoteFilters()
+      ? "Try another search or clear the filters."
       : "Create a note to keep your study ideas organized and easy to review.";
     const createButton = empty.querySelector("button");
-    if(createButton) createButton.hidden = !!noteSearch;
+    if(createButton) createButton.hidden = !!noteSearch||hasNoteFilters();
   }
 };
 
