@@ -19,6 +19,7 @@ Personal notes can be created, categorized, searched, edited, and read in full o
 - Upload or change a profile photo; a resized copy is saved with the account's Drive data and backup.
 - View total exams, chapters, topics, MCQ questions, coding questions, and overall MCQ practice progress on the dashboard.
 - Add questions individually or import multiple-choice questions in bulk.
+- After saving, open the selected topic to review and edit its MCQs; practice attempts are tracked per device and retained with saved progress.
 - Filter the Question Bank by exam, chapter, topic, and status; search and practice the filtered questions.
 - Practice questions and review revision questions.
 - Organize coding questions by topic, save C++, Java, Python, and JavaScript code drafts, add multiple test cases, and review concept notes in Coding Revision.

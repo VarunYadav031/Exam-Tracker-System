@@ -172,6 +172,7 @@ let codingEditId = null;
 let codingPre = null;
 let codingDraft = null;
 let pre = null;
+let questionTopicFocus = null;
 let noteEditId = null;
 let noteEditorOpen = false;
 let noteSelectionRange = null;
@@ -405,11 +406,12 @@ function normalizeData(data) {
       };
     }
     Object.values(q.progressByDevice).forEach(progress=>{
-      progress.attempts = Number(progress.attempts||0);
-      progress.correct = Number(progress.correct||0);
-      progress.wrong = Number(progress.wrong||0);
+      progress.attempts = Math.max(0,Number(progress.attempts)||0);
+      progress.correct = Math.max(0,Number(progress.correct)||0);
+      progress.wrong = Math.max(0,Number(progress.wrong)||0);
       progress.last = progress.last||null;
-      progress.lastAttemptAt = Number(progress.lastAttemptAt||0);
+      progress.lastOk = !!progress.lastOk;
+      progress.lastAttemptAt = Math.max(0,Number(progress.lastAttemptAt)||0);
     });
     updateQuestionProgress(q);
   });
@@ -455,7 +457,16 @@ function updateQuestionProgress(question) {
   if(latest) {
     question.last = latest.last;
     question.lastOk = !!latest.lastOk;
+  } else if(!question.attempts) {
+    question.last = null;
+    question.lastOk = false;
   }
+}
+
+function questionAttemptCount(question) {
+  const recorded = Object.values(question.progressByDevice||{})
+    .reduce((total,progress)=>total+(Number(progress?.attempts)||0),0);
+  return Math.max(Number(question.attempts)||0,recorded);
 }
 
 function mergeRecords(localRecords,remoteRecords,mergeNested) {
@@ -938,7 +949,7 @@ function questionLocation(q) {
 }
 
 function status(q) {
-  if(!q.attempts) return "new";
+  if(!questionAttemptCount(q)) return "new";
   if(!q.lastOk) return "wrong";
   return q.revise ? "revise" : "done";
 }
@@ -1077,9 +1088,9 @@ function render() {
 
 function dashboard() {
   const Q = S.questions;
-  const attempted = Q.filter(q=>q.attempts).length;
-  const correct = Q.filter(q=>q.attempts && q.lastOk).length;
-  const incorrect = Q.filter(q=>q.attempts && !q.lastOk).length;
+  const attempted = Q.filter(q=>questionAttemptCount(q)>0).length;
+  const correct = Q.filter(q=>questionAttemptCount(q)>0 && q.lastOk).length;
+  const incorrect = Q.filter(q=>questionAttemptCount(q)>0 && !q.lastOk).length;
   const revise = Q.filter(q=>status(q)==="wrong"||status(q)==="revise").length;
   const chapters = S.exams.reduce((total,exam)=>total+exam.chapters.length,0);
   const topics = S.exams.reduce((total,exam)=>
@@ -1132,7 +1143,10 @@ function examsPage() {
       </div>`;
 
       (c.topics||[]).forEach(t => {
-        const n = S.questions.filter(q=>q.topicId===t.id).length;
+        const topicQuestions = S.questions.filter(q=>
+          q.examId===e.id && q.chapterId===c.id && q.topicId===t.id
+        );
+        const n = topicQuestions.length;
         const codeCount = S.codingQuestions.filter(q=>q.topicId===t.id).length;
         h += `<div class="row" style="justify-content:space-between;margin:8px 0 8px 12px">
           <span>• ${esc(t.name)} <span class="mu">(${n} MCQ · ${codeCount} code)</span></span>
@@ -1141,6 +1155,22 @@ function examsPage() {
           ${btn("Rename",`renameTopic('${e.id}','${c.id}','${t.id}')`)}
           ${btn("Delete",`deleteTopic('${e.id}','${c.id}','${t.id}')`,"del")}</span>
         </div>`;
+        if(topicQuestions.length) {
+          h += `<details style="margin:0 0 10px 12px" ${questionTopicFocus===t.id?"open":""}>
+            <summary>View ${n} MCQ${n===1?"":"s"}</summary>`;
+          topicQuestions.forEach(question=>{
+            h += `<div style="padding:10px 0;border-top:1px solid var(--bd)">
+              <b>${esc(question.q)}</b>
+              <div class="row" style="margin-top:6px">
+                <span class="tag">${STATUS[status(question)]}</span>
+                <span class="tag">Attempts: ${questionAttemptCount(question)}</span>
+                <span class="tag">Answer: ${"ABCD"[question.ans]}</span>
+                ${btn("Edit",`editQuestion('${question.id}')`)}
+              </div>
+            </div>`;
+          });
+          h += `</details>`;
+        }
         h += `<details style="margin:0 0 10px 12px">
           <summary>${t.notes?"Edit topic notes":"Add topic notes"}${t.notes?` <span class="mu">(${t.notes.length} characters)</span>`:""}</summary>
           <label for="topic-notes-${t.id}">Topic notes</label>
@@ -1786,13 +1816,14 @@ function refreshTopics() {
 window.refreshTopics = refreshTopics;
 
 window.saveQuestion = function() {
-  const examId = $("qExam").value;
-  const chapterId = $("qChapter").value;
-  const topicId = $("qTopic").value;
-  const text = $("qText").value.trim();
-  const opts = [0,1,2,3].map(i=>$("option"+i).value.trim());
+  const examId = $("qExam")?.value||"";
+  const chapterId = $("qChapter")?.value||"";
+  const topicId = $("qTopic")?.value||"";
+  const text = $("qText")?.value.trim()||"";
+  const opts = [0,1,2,3].map(i=>$("option"+i)?.value.trim()||"");
 
-  if(!text || opts.some(v=>!v) || !chapterId || !topicId) {
+  if(!text || opts.some(v=>!v) || !getExam(examId) ||
+    !getChapter(examId,chapterId) || !getTopic(getChapter(examId,chapterId),topicId)) {
     return message("Question, chapter, topic aur chaaron options bharna zaroori hai.");
   }
 
@@ -1806,19 +1837,20 @@ window.saveQuestion = function() {
 
   if(editId) {
     const question = S.questions.find(q=>q.id===editId);
+    if(!question) return message("Question nahi mila. Question Bank refresh karke phir try karein.");
     Object.assign(question,data);
     stamp(question);
     editId = null;
-    save();go("bank");
   } else {
     S.questions.push({
-      id:uid(),bm:false,attempts:0,correct:0,wrong:0,
+      id:uid(),bm:false,attempts:0,correct:0,wrong:0,progressByDevice:{},
       last:null,lastOk:false,revise:false,...data,updatedAt:Date.now()
     });
-    pre = {examId,chapterId,topicId};
-    save();render();
-    setSync("Question added; saving...");
   }
+  pre = null;
+  questionTopicFocus = topicId;
+  save();
+  go("exams");
 };
 
 /* ---------- BULK IMPORT ---------- */
@@ -1883,16 +1915,16 @@ window.saveBulk = function() {
   const topicId = $("qTopic").value;
   if(!examId || !chapterId || !topicId) return message("Exam, chapter aur topic select karein.");
 
-  const count = bulkQuestions.length;
   bulkQuestions.forEach(q=>S.questions.push({
-    id:uid(),bm:false,attempts:0,correct:0,wrong:0,
+    id:uid(),bm:false,attempts:0,correct:0,wrong:0,progressByDevice:{},
     last:null,lastOk:false,revise:false,updatedAt:Date.now(),
     examId,chapterId,topicId,...q,src:"",note:""
   }));
 
   bulkQuestions = [];
-  save();render();
-  setSync(count+" questions added; saving...");
+  questionTopicFocus = topicId;
+  save();
+  go("exams");
 };
 
 /* ---------- CODING QUESTIONS ---------- */
@@ -2198,7 +2230,7 @@ function filteredQuestions() {
     if(filter.chapter && q.chapterId!==filter.chapter) return false;
     if(filter.topic && q.topicId!==filter.topic) return false;
     if(filter.status==="bm" && !q.bm) return false;
-    if(filter.status==="attempted" && !q.attempts) return false;
+    if(filter.status==="attempted" && !questionAttemptCount(q)) return false;
     if(["new","wrong","revise","done"].includes(filter.status) && status(q)!==filter.status) return false;
     const haystack = (q.q+" "+q.note+" "+q.src).toLowerCase();
     if(filter.q && !haystack.includes(filter.q.toLowerCase())) return false;
@@ -2253,7 +2285,7 @@ function bankPage() {
         <span class="tag">${esc(questionLocation(q))}</span>
         <span class="tag">${STATUS[status(q)]}</span>
         ${q.src?`<span class="tag">${esc(q.src)}</span>`:""}
-        <span class="tag">Attempts: ${q.attempts}</span>
+        <span class="tag">Attempts: ${questionAttemptCount(q)}</span>
       </div>
       <div class="row" style="margin-top:8px">
         ${btn(q.bm?"★ Bookmarked":"☆ Bookmark",`toggleBookmark('${q.id}')`)}
