@@ -233,7 +233,7 @@ const NOTE_TAGS = new Set([
   "TBODY","TR","TH","TD","A","IMG"
 ]);
 
-function sanitizeNoteHtml(html) {
+function sanitizeNoteHtml(html, {allowLargeImages = false} = {}) {
   const parsed = new DOMParser().parseFromString(String(html || ""), "text/html");
   const blocked = new Set(["SCRIPT","STYLE","IFRAME","OBJECT","EMBED","SVG","MATH","VIDEO","AUDIO","FORM"]);
   const clean = node => {
@@ -252,8 +252,9 @@ function sanitizeNoteHtml(html) {
         if(child.tagName === "A" && attr.name === "href" && /^https?:\/\//i.test(attr.value)) return;
         if(child.tagName === "A" && attr.name === "title") return;
         if(child.tagName === "IMG" && attr.name === "src" &&
-          (/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(attr.value) &&
-            attr.value.length <= 250000 || /^https:\/\//i.test(attr.value))) return;
+          (/^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/.test(attr.value) &&
+            attr.value.length <= (allowLargeImages ? 14*1024*1024 : 250000) ||
+            /^https:\/\//i.test(attr.value))) return;
         if(child.tagName === "IMG" && attr.name === "alt") return;
         if(child.tagName === "TH" || child.tagName === "TD") {
           if((attr.name === "colspan" || attr.name === "rowspan") &&
@@ -1379,7 +1380,7 @@ function notesPage() {
       <button type="button" title="Undo" aria-label="Undo" onmousedown="event.preventDefault()" onclick="formatNote('undo')">↶</button>
       <button type="button" title="Redo" aria-label="Redo" onmousedown="event.preventDefault()" onclick="formatNote('redo')">↷</button>
       <button type="button" title="Clear formatting" aria-label="Clear formatting" onmousedown="event.preventDefault()" onclick="formatNote('removeFormat')">Tx</button>
-      <input id="noteImageInput" type="file" accept="image/jpeg,image/png,image/webp" hidden onchange="insertNoteImage(this)">
+      <input id="noteImageInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden onchange="insertNoteImage(this)">
     </div>
     <p class="mu">ChatGPT ya kisi document se formatted text, tables, aur images ko seedha yahan paste karein.</p>
     <div id="noteContent" class="note-rich-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Your note" data-placeholder="Write, format, or paste text, tables, and images here..." onpaste="handleNotePaste(event)" oninput="saveNoteSelection()">${formatNoteContent(currentNote?.content||"")}</div>
@@ -1590,8 +1591,8 @@ window.openNoteImagePicker = function() {
 };
 
 async function noteImageFileDataUrl(file) {
-  if(!["image/jpeg","image/png","image/webp"].includes(file.type))
-    throw new Error("Please choose a JPEG, PNG, or WebP image.");
+  if(!["image/jpeg","image/png","image/webp","image/gif"].includes(file.type))
+    throw new Error("Please choose a JPEG, PNG, WebP, or GIF image.");
   if(file.size > 10*1024*1024)
     throw new Error("Image is too large. Please choose an image under 10 MB.");
 
@@ -1630,6 +1631,44 @@ async function noteImageFileDataUrl(file) {
     return dataUrl;
   } finally {
     if(objectUrl) URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function clipboardImageDataUrl(source) {
+  const dataUrlMatch = source.match(/^data:image\/(jpeg|png|webp|gif);base64,([A-Za-z0-9+/=\s]+)$/i);
+  if(dataUrlMatch) {
+    if(dataUrlMatch[2].length>14*1024*1024)
+      throw new Error("Pasted image is too large to process.");
+    const blob = await fetch(source).then(response=>response.blob());
+    if(blob.size>10*1024*1024)
+      throw new Error("Pasted image is too large to process.");
+    return noteImageFileDataUrl(new File([blob],"pasted-image",{
+      type:`image/${dataUrlMatch[1].toLowerCase()}`
+    }));
+  }
+
+  if(!/^https:\/\//i.test(source)) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(()=>controller.abort(),5000);
+  try {
+    const response = await fetch(source,{
+      mode:"cors",
+      credentials:"omit",
+      redirect:"error",
+      signal:controller.signal
+    });
+    if(!response.ok) return null;
+    const blob = await response.blob();
+    if(blob.size>10*1024*1024 ||
+      !["image/jpeg","image/png","image/webp","image/gif"].includes(blob.type.toLowerCase())) return null;
+    return noteImageFileDataUrl(new File([blob],"pasted-image",{
+      type:blob.type.toLowerCase()
+    }));
+  } catch(error) {
+    console.warn("Could not embed a linked clipboard image; keeping its HTTPS link.",error);
+    return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -1685,20 +1724,36 @@ window.handleNotePaste = async function(event) {
   event.preventDefault();
   try {
     const container = document.createElement("div");
-    if(html) container.innerHTML = sanitizeNoteHtml(html);
+    if(html) container.innerHTML = sanitizeNoteHtml(html,{allowLargeImages:true});
     else container.innerHTML = plainText.split(/\r?\n/)
       .map(line=>`<p>${line ? esc(line) : "<br>"}</p>`).join("");
 
-    if(imageFiles.length && !container.querySelector("img")) {
-      for(const file of imageFiles) {
-        const image = document.createElement("img");
+    const clipboardImages = [...container.querySelectorAll("img")];
+    for(let index=0;index<clipboardImages.length;index++) {
+      const image = clipboardImages[index];
+      const file = imageFiles[index];
+      if(file) {
         image.src = await noteImageFileDataUrl(file);
-        image.alt = file.name.replace(/\.[^.]+$/,"").slice(0,120) || "Pasted image";
+      } else {
+        const source = image.getAttribute("src")||"";
+        const embedded = await clipboardImageDataUrl(source);
+        if(embedded) image.src = embedded;
+      }
+      if(file || /^data:image\//i.test(image.getAttribute("src")||"")) {
         image.setAttribute("referrerpolicy","no-referrer");
         image.loading = "lazy";
-        container.append(image,document.createElement("br"));
       }
     }
+
+    for(const file of imageFiles.slice(clipboardImages.length)) {
+      const image = document.createElement("img");
+      image.src = await noteImageFileDataUrl(file);
+      image.alt = file.name.replace(/\.[^.]+$/,"").slice(0,120) || "Pasted image";
+      image.setAttribute("referrerpolicy","no-referrer");
+      image.loading = "lazy";
+      container.append(image,document.createElement("br"));
+    }
+    container.innerHTML = sanitizeNoteHtml(container.innerHTML);
 
     const fragment = document.createDocumentFragment();
     while(container.firstChild) fragment.append(container.firstChild);

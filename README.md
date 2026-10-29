@@ -14,7 +14,7 @@ Personal notes can be created, categorized, searched, edited, and read in full o
 
 - Create exams with chapters and topics.
 - Save notes on each topic before or alongside its questions.
-- Create and edit formatted standalone notes with a sticky editing toolbar, text and heading colors, highlights, images, font sizes, alignment, headings, lists, quotes, undo/redo, and clear formatting. Paste formatted text, tables, and images directly from ChatGPT or other documents; organize notes with optional categories, search them, and expand or minimize each note while reading.
+- Create and edit formatted standalone notes with a sticky editing toolbar, text and heading colors, highlights, images, font sizes, alignment, headings, lists, quotes, undo/redo, and clear formatting. Paste formatted text, tables, and images directly from ChatGPT or other documents; clipboard image files and supported embedded images are resized and compressed automatically. Organize notes with optional categories, search them, and expand or minimize each note while reading.
 - Use an icon-labeled vertical navigation and see account name, photo, and email when provided by the sign-in account.
 - Upload or change a profile photo; a resized copy is saved with the account's Drive data and backup.
 - View total exams, chapters, topics, MCQ questions, coding questions, and overall MCQ practice progress on the dashboard.
