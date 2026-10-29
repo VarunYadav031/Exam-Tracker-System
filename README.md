@@ -14,13 +14,14 @@ Personal notes can be created, categorized, searched, edited, and read in full o
 
 - Create exams with chapters and topics.
 - Save notes on each topic before or alongside its questions.
-- Create and edit formatted standalone notes with a sticky editing toolbar, text and heading colors, highlights, images, font sizes, alignment, headings, lists, quotes, undo/redo, and clear formatting. Paste formatted text, tables, and images directly from ChatGPT or other documents; clipboard image files and images found in embedded HTML are resized and compressed automatically. Organize notes with optional categories, search them, and expand or minimize each note while reading.
+- Create and edit formatted standalone notes with a sticky editing toolbar, text and heading colors, highlights, images, font sizes, alignment, headings, lists, quotes, undo/redo, and clear formatting. Paste formatted text, tables, and images directly from ChatGPT or other documents; clipboard images keep their original quality when small and are resized/compressed at higher resolution when needed. Organize notes with optional categories, search them, and expand or minimize each note while reading.
+- Preview a visual landing page explaining all study sections before signing in, including how to use the question bank, practice, revision, coding, and notes.
 - Use an icon-labeled vertical navigation and see account name, photo, and email when provided by the sign-in account.
 - Upload or change a profile photo; a resized copy is saved with the account's Drive data and backup.
 - View total exams, chapters, topics, MCQ questions, coding questions, and overall MCQ practice progress on the dashboard.
 - Add questions individually or import multiple-choice questions in bulk.
 - After saving, open the selected topic to review and edit its MCQs; practice attempts are tracked per device and retained with saved progress.
-- Filter the Question Bank by exam, chapter, topic, and status; search and practice the filtered questions.
+- Filter the Question Bank by exam, chapter, topic, and status; search, practice, edit, and delete questions from either the bank or the question editor.
 - Practice questions and review revision questions.
 - Organize coding questions by topic, save C++, Java, Python, and JavaScript code drafts, add multiple test cases, and review concept notes in Coding Revision.
 - Back up and restore your question data.

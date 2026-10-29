@@ -84,6 +84,25 @@ hr{border:0;border-top:1px solid var(--bd);margin:12px 0}
 .note-format-toolbar input[type=color]{width:34px;height:34px;margin:0;padding:2px;cursor:pointer}
 .note-format-toolbar input:focus-visible,.note-format-toolbar select:focus-visible,.note-format-toolbar button:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 .note-empty{text-align:center;padding:34px 18px}
+.landing{max-width:1120px;margin:0 auto;padding:10px 0 30px}
+.landing-hero{position:relative;overflow:hidden;padding:clamp(24px,5vw,52px);border:1px solid color-mix(in srgb,var(--ac) 20%,var(--bd));border-radius:24px;background:radial-gradient(ellipse at 86% 12%,color-mix(in srgb,#a5d8ff 48%,transparent),transparent 38%),radial-gradient(ellipse at 10% 100%,color-mix(in srgb,#d0bfff 36%,transparent),transparent 42%),linear-gradient(135deg,var(--card),color-mix(in srgb,var(--ac) 7%,var(--card)));box-shadow:0 18px 50px #26346b12}
+.landing-kicker{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border:1px solid color-mix(in srgb,var(--ac) 24%,var(--bd));border-radius:999px;background:var(--card);color:var(--ac);font-size:12px;font-weight:700}
+.landing-hero h2{max-width:720px;margin:16px 0 10px;font-size:clamp(30px,5.5vw,54px);line-height:1.08;letter-spacing:-1.4px}
+.landing-hero>p{max-width:700px;color:var(--mu);font-size:16px}
+.landing-hero .pri{margin-top:8px;padding:11px 18px}
+.landing-overview{display:flex;gap:9px;flex-wrap:wrap;margin-top:24px}
+.landing-overview span{padding:7px 10px;border:1px solid var(--bd);border-radius:9px;background:color-mix(in srgb,var(--card) 82%,transparent);font-size:12px}
+.landing-section-heading{margin:34px 2px 6px;font-size:23px}
+.landing-section-copy{margin:0 2px 16px;color:var(--mu)}
+.landing-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,245px),1fr));gap:14px}
+.landing-feature{overflow:hidden;margin:0;padding:0;transition:transform .18s ease,box-shadow .18s ease}
+.landing-feature:hover{transform:translateY(-3px);box-shadow:0 12px 30px #17255412}
+.landing-illustration{display:block;width:100%;height:auto;max-height:150px;background:color-mix(in srgb,var(--landing-tint) 62%,var(--card))}
+.landing-feature-copy{padding:14px 16px 17px}
+.landing-feature-copy h3{margin:0 0 6px;font-size:16px}
+.landing-feature-copy p{margin:0;color:var(--mu);font-size:13px;line-height:1.6}
+.landing-feature-label{display:block;margin-bottom:7px;color:var(--ac);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.landing-footer{margin:16px 2px;padding:14px 16px;border:1px solid var(--bd);border-radius:12px;color:var(--mu);font-size:13px}
 @media(max-width:700px){
   header{align-items:flex-start}
   header>.row{justify-content:flex-end;flex:1}
@@ -92,6 +111,7 @@ hr{border:0;border-top:1px solid var(--bd);margin:12px 0}
   .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
   .stat b{font-size:21px}
   .note-card-header,.note-card-body{padding-left:14px;padding-right:14px}
+  .landing-hero{border-radius:17px}
 }
 @media(max-width:520px){
   .workspace{display:block}
@@ -232,6 +252,8 @@ const NOTE_TAGS = new Set([
   "BLOCKQUOTE","PRE","CODE","HR","SPAN","MARK","TABLE","THEAD",
   "TBODY","TR","TH","TD","A","IMG"
 ]);
+const MAX_NOTE_CONTENT_SIZE = 2400000;
+const MAX_NOTE_IMAGE_SIZE = 800*1024;
 
 function sanitizeNoteHtml(html, {allowLargeImages = false} = {}) {
   const parsed = new DOMParser().parseFromString(String(html || ""), "text/html");
@@ -253,7 +275,7 @@ function sanitizeNoteHtml(html, {allowLargeImages = false} = {}) {
         if(child.tagName === "A" && attr.name === "title") return;
         if(child.tagName === "IMG" && attr.name === "src" &&
           (/^data:image\/(?:jpeg|png|webp|gif|avif|bmp);base64,[A-Za-z0-9+/]+={0,2}$/.test(attr.value) &&
-            attr.value.length <= (allowLargeImages ? 14*1024*1024 : 250000) ||
+            attr.value.length <= (allowLargeImages ? 14*1024*1024 : 1100000) ||
             /^https:\/\//i.test(attr.value) ||
             allowLargeImages && /^blob:/i.test(attr.value))) return;
         if(child.tagName === "IMG" && attr.name === "alt") return;
@@ -1070,24 +1092,80 @@ window.useGoogleProfilePhoto = function() {
 
 /* ---------- RENDER ---------- */
 
+const LANDING_FEATURES = [
+  ["Dashboard","Study overview","See your exams, topics, question totals, and MCQ practice progress at a glance."],
+  ["My Exams","Organize your syllabus","Create exams, add chapters and topics, and open each topic's MCQs, coding questions, and notes."],
+  ["Add Question","Build your own MCQs","Save a question with four options, the correct answer, an explanation, and a source—or import multiple questions at once."],
+  ["Question Bank","Find and manage questions","Search and filter questions, edit or delete them, bookmark them, or choose questions to practice."],
+  ["Practice","Practice at your pace","Choose an answer, see the correct answer and explanation, and track your attempts."],
+  ["Revision","Focus on what to revisit","Filter incorrect or review-worthy questions to build a focused revision list."],
+  ["Coding","Save coding practice","Organize programming prompts, constraints, code drafts, and test cases by topic."],
+  ["Code Revision","Review coding concepts","Revisit coding concepts and revision notes alongside your saved questions."],
+  ["Notes","Create rich study notes","Write notes with formatted text, headings, highlights, tables, and images; find them with categories and search."],
+  ["Settings","Manage data and sync","Manage Google Drive sync, account data, backups, and app preferences."]
+];
+
+function landingFeatureArt(title,index) {
+  const palettes = [
+    ["#dbeafe","#2563eb"],["#dcfce7","#16a34a"],["#fef3c7","#d97706"],
+    ["#ede9fe","#7c3aed"],["#cffafe","#0891b2"],["#ffe4e6","#e11d48"],
+    ["#e0e7ff","#4f46e5"],["#f3e8ff","#9333ea"],["#ffedd5","#ea580c"],
+    ["#e2e8f0","#475569"]
+  ];
+  const [tint,accent] = palettes[index%palettes.length];
+  return `<svg class="landing-illustration" style="--landing-tint:${tint}" viewBox="0 0 360 150" role="img" aria-label="${esc(title)} app illustration">
+    <rect x="18" y="12" width="324" height="126" rx="16" fill="${tint}"/>
+    <circle cx="310" cy="35" r="42" fill="#fff" opacity=".42"/>
+    <rect x="52" y="28" width="256" height="101" rx="12" fill="#fff" opacity=".94"/>
+    <rect x="52" y="28" width="256" height="20" rx="12" fill="${accent}" opacity=".13"/>
+    <circle cx="66" cy="38" r="3" fill="${accent}" opacity=".55"/>
+    <circle cx="77" cy="38" r="3" fill="${accent}" opacity=".35"/>
+    <circle cx="88" cy="38" r="3" fill="${accent}" opacity=".2"/>
+    <rect x="68" y="59" width="50" height="54" rx="9" fill="${tint}"/>
+    <text x="93" y="96" text-anchor="middle" font-size="27">${TABS[index][2]}</text>
+    <rect x="132" y="62" width="112" height="8" rx="4" fill="${accent}" opacity=".72"/>
+    <rect x="132" y="78" width="146" height="5" rx="2.5" fill="#94a3b8" opacity=".35"/>
+    <rect x="132" y="90" width="126" height="5" rx="2.5" fill="#94a3b8" opacity=".25"/>
+    <rect x="132" y="103" width="62" height="16" rx="8" fill="${accent}" opacity=".16"/>
+    <rect x="202" y="103" width="42" height="16" rx="8" fill="${tint}"/>
+    <path d="M265 107l7 7 15-17" fill="none" stroke="${accent}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+function landingPage() {
+  const features = LANDING_FEATURES.map(([title,label,description],index)=>`
+    <article class="card landing-feature">
+      ${landingFeatureArt(title,index)}
+      <div class="landing-feature-copy">
+        <span class="landing-feature-label">${esc(label)}</span>
+        <h3>${esc(title)}</h3>
+        <p>${esc(description)}</p>
+      </div>
+    </article>`).join("");
+  return `<div class="landing">
+    <section class="landing-hero">
+      <span class="landing-kicker">📚 Your personal study workspace</span>
+      <h2>Organize your studies. Turn practice into progress.</h2>
+      <p>Exam Prep Tracker brings exams, MCQs, coding practice, and study notes together in one simple workspace—so you can plan, practice, and revise with confidence.</p>
+      <button class="pri" onclick="loginBtn()">Get started with Google</button>
+      <div class="landing-overview">
+        <span>📚 Exams & topics</span><span>✅ MCQ practice</span>
+        <span>💻 Coding</span><span>📝 Rich notes</span>
+        <span>☁️ Account-based data</span>
+      </div>
+    </section>
+    <h3 class="landing-section-heading">Everything you need to study</h3>
+    <p class="landing-section-copy">Explore each section to see what it does and how it can help you.</p>
+    <div class="landing-grid">${features}</div>
+    <div class="landing-footer">Sign in with Google to keep your study data separate for your account. Connect Google Drive from Settings to sync your data.</div>
+  </div>`;
+}
+
 function render() {
   renderProfile();
   if(!user) {
     $("nav").hidden = true;
-    $("app").innerHTML = `
-      <div class="card">
-        <h2>📚 Exam Prep Tracker</h2>
-        <p>Exam Prep Tracker aapke exams aur padhai ko ek jagah organize karne wala study app hai.</p>
-        <h3>App mein kya kar sakte hain?</h3>
-        <ul>
-          <li>Exams, chapters aur topics banakar apna study material organize karein.</li>
-          <li>MCQ questions khud add karein ya bulk import karein; practice, answers aur progress track karein.</li>
-          <li>Coding questions, code drafts, test cases aur revision notes manage karein.</li>
-          <li>Formatted notes likhein, colors aur highlights lagayein, aur text, tables aur images save karein.</li>
-        </ul>
-        <p class="mu">Google se sign in karne ke baad aapka data aapke account ke liye alag save hota hai. Google Drive sync ke liye Settings mein Drive connect karein.</p>
-        <button class="pri" onclick="loginBtn()">Sign in with Google</button>
-      </div>`;
+    $("app").innerHTML = landingPage();
     return;
   }
 
@@ -1390,7 +1468,7 @@ function notesPage() {
       <button type="button" title="Clear formatting" aria-label="Clear formatting" onmousedown="event.preventDefault()" onclick="formatNote('removeFormat')">Tx</button>
       <input id="noteImageInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/bmp" hidden onchange="insertNoteImage(this)">
     </div>
-    <p class="mu">ChatGPT ya kisi document se formatted text, tables, aur images ko seedha yahan paste karein.</p>
+    <p class="mu">Paste text and tables from ChatGPT or other documents. If an image is missing, right-click the original and choose Copy image, or select the image file with the Image button.</p>
     <div id="noteContent" class="note-rich-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Your note" data-placeholder="Write, format, or paste text, tables, and images here..." onpaste="handleNotePaste(event)" oninput="saveNoteSelection()">${formatNoteContent(currentNote?.content||"")}</div>
     <div class="row">
       <button class="pri" onclick="saveNote()">${currentNote?"Save changes":"Save note"}</button>
@@ -1604,31 +1682,47 @@ async function noteImageFileDataUrl(file) {
   if(file.size > 10*1024*1024)
     throw new Error("Image is too large. Please choose an image under 10 MB.");
 
+  if(file.size<=MAX_NOTE_IMAGE_SIZE) {
+    return new Promise((resolve,reject)=>{
+      const reader = new FileReader();
+      reader.onload = () => typeof reader.result==="string"
+        ? resolve(reader.result)
+        : reject(new Error("Could not read the image."));
+      reader.onerror = () => reject(new Error("Could not read the image."));
+      reader.readAsDataURL(file);
+    });
+  }
+
   let objectUrl;
   try {
     objectUrl = URL.createObjectURL(file);
     const image = new Image();
     image.src = objectUrl;
     await image.decode();
-    let scale = Math.min(1,1200/Math.max(image.width,image.height));
+    let scale = Math.min(1,2000/Math.max(image.width,image.height));
     let blob = null;
 
-    for(let attempt=0;attempt<8;attempt++) {
+    for(let attempt=0;attempt<12;attempt++) {
       const canvas = document.createElement("canvas");
       canvas.width = Math.max(1,Math.round(image.width*scale));
       canvas.height = Math.max(1,Math.round(image.height*scale));
       const context = canvas.getContext("2d");
       if(!context) throw new Error("Image processing is unavailable in this browser.");
-      context.fillStyle = "#fff";
-      context.fillRect(0,0,canvas.width,canvas.height);
+      if(file.type!=="image/png") {
+        context.fillStyle = "#fff";
+        context.fillRect(0,0,canvas.width,canvas.height);
+      }
       context.drawImage(image,0,0,canvas.width,canvas.height);
-      blob = await new Promise(resolve=>canvas.toBlob(resolve,"image/jpeg",0.78));
+      const outputType = file.type==="image/png" ? "image/png" : "image/jpeg";
+      blob = await new Promise(resolve=>canvas.toBlob(
+        resolve,outputType,outputType==="image/jpeg"?0.9:undefined
+      ));
       if(!blob) throw new Error("This image could not be compressed.");
-      if(blob && blob.size<=170*1024) break;
-      scale *= 0.8;
+      if(blob.size<=MAX_NOTE_IMAGE_SIZE) break;
+      scale *= 0.9;
     }
 
-    if(!blob || blob.size>170*1024)
+    if(!blob || blob.size>MAX_NOTE_IMAGE_SIZE)
       throw new Error("This image could not be compressed enough. Please choose a smaller image.");
     const dataUrl = await new Promise((resolve,reject)=>{
       const reader = new FileReader();
@@ -1690,9 +1784,19 @@ function clipboardImageSource(element) {
     element.getAttribute("data-src"),
     element.getAttribute("data-original"),
     element.getAttribute("data-image"),
-    element.getAttribute("data-image-url")
+    element.getAttribute("data-image-url"),
+    element.getAttribute("data-lazy-src"),
+    element.getAttribute("data-fallback-src")
   ].filter(Boolean);
-  const srcset = element.getAttribute("srcset") || element.getAttribute("data-srcset") || "";
+  const pictureSources = element.closest?.("picture")
+    ? [...element.closest("picture").querySelectorAll("source")]
+      .map(source=>source.getAttribute("srcset")||source.getAttribute("data-srcset")||"")
+    : [];
+  const srcset = [
+    element.getAttribute("srcset"),
+    element.getAttribute("data-srcset"),
+    ...pictureSources
+  ].filter(Boolean).join(",");
   if(srcset) {
     const dataImage = srcset.match(/(data:image\/(?:jpeg|png|webp|gif|avif|bmp);base64,[A-Za-z0-9+/=]+)/i);
     if(dataImage) candidates.push(dataImage[1]);
@@ -1732,7 +1836,7 @@ window.insertNoteImage = async function(input) {
   if(!editor) return;
   try {
     const dataUrl = await noteImageFileDataUrl(file);
-    if(new Blob([editor.innerHTML,dataUrl]).size>700000)
+    if(new Blob([editor.innerHTML,dataUrl]).size>MAX_NOTE_CONTENT_SIZE)
       throw new Error("This note has reached its image and text size limit. Remove an image or shorten the note.");
 
     restoreNoteSelection(editor);
@@ -1771,30 +1875,74 @@ window.handleNotePaste = async function(event) {
     .filter(item=>item.kind==="file" && item.type.startsWith("image/"))
     .map(item=>item.getAsFile())
     .filter(Boolean);
-  const imageFiles = itemImageFiles.length
+  let imageFiles = itemImageFiles.length
     ? itemImageFiles
     : Array.from(clipboard.files||[]).filter(file=>file.type.startsWith("image/"));
-  if(!html && !imageFiles.length) return;
+  const htmlMayContainImages =
+    /<(?:img|picture|source)\b|data:image\/|background(?:-image)?\s*:/i.test(html);
+  if(!html && !imageFiles.length && !plainText && !navigator.clipboard?.read) return;
 
   event.preventDefault();
   try {
+    if(!imageFiles.length && navigator.clipboard?.read &&
+      (htmlMayContainImages || (!html && !plainText))) {
+      try {
+        const clipboardEntries = await navigator.clipboard.read();
+        for(const entry of clipboardEntries) {
+          const imageType = entry.types.find(type=>type.startsWith("image/"));
+          if(imageType) imageFiles.push(new File(
+            [await entry.getType(imageType)],"clipboard-image",{type:imageType}
+          ));
+        }
+      } catch(error) {
+        console.warn("Browser clipboard image access was unavailable.",error);
+      }
+    }
+    if(!html && !imageFiles.length && !plainText) {
+      message("The clipboard did not provide pasteable content. Copy the image again or choose it with the Image button.");
+      return;
+    }
+
+    const preparedHtml = html ? prepareClipboardImages(html) : "";
+    const sourceImageCount = preparedHtml
+      ? new DOMParser().parseFromString(preparedHtml,"text/html").querySelectorAll("img").length
+      : 0;
     const container = document.createElement("div");
-    if(html) container.innerHTML = sanitizeNoteHtml(
-      prepareClipboardImages(html),{allowLargeImages:true}
-    );
+    if(html) container.innerHTML = sanitizeNoteHtml(preparedHtml,{allowLargeImages:true});
     else container.innerHTML = plainText.split(/\r?\n/)
       .map(line=>`<p>${line ? esc(line) : "<br>"}</p>`).join("");
 
     const clipboardImages = [...container.querySelectorAll("img")];
+    let unavailableImageCount = Math.max(0,sourceImageCount-clipboardImages.length);
+    const imageErrors = [];
     for(let index=0;index<clipboardImages.length;index++) {
       const image = clipboardImages[index];
       const file = imageFiles[index];
       if(file) {
-        image.src = await noteImageFileDataUrl(file);
+        try {
+          image.src = await noteImageFileDataUrl(file);
+        } catch(error) {
+          console.error("Could not embed a copied note image:",error);
+          image.remove();
+          unavailableImageCount++;
+          imageErrors.push(error);
+          continue;
+        }
       } else {
         const source = image.getAttribute("src")||"";
-        const embedded = await clipboardImageDataUrl(source);
-        if(embedded) image.src = embedded;
+        try {
+          const embedded = await clipboardImageDataUrl(source);
+          if(embedded) image.src = embedded;
+          else if(!/^https:\/\//i.test(source)) {
+            image.remove();
+            unavailableImageCount++;
+          }
+        } catch(error) {
+          console.error("Could not embed a copied note image:",error);
+          image.remove();
+          unavailableImageCount++;
+          imageErrors.push(error);
+        }
       }
       if(file || /^data:image\//i.test(image.getAttribute("src")||"")) {
         image.setAttribute("referrerpolicy","no-referrer");
@@ -1803,23 +1951,35 @@ window.handleNotePaste = async function(event) {
     }
 
     for(const file of imageFiles.slice(clipboardImages.length)) {
-      const image = document.createElement("img");
-      image.src = await noteImageFileDataUrl(file);
-      image.alt = file.name.replace(/\.[^.]+$/,"").slice(0,120) || "Pasted image";
-      image.setAttribute("referrerpolicy","no-referrer");
-      image.loading = "lazy";
-      container.append(image,document.createElement("br"));
+      try {
+        const image = document.createElement("img");
+        image.src = await noteImageFileDataUrl(file);
+        image.alt = file.name.replace(/\.[^.]+$/,"").slice(0,120) || "Pasted image";
+        image.setAttribute("referrerpolicy","no-referrer");
+        image.loading = "lazy";
+        container.append(image,document.createElement("br"));
+      } catch(error) {
+        console.error("Could not embed a copied note image:",error);
+        unavailableImageCount++;
+        imageErrors.push(error);
+      }
     }
     container.innerHTML = sanitizeNoteHtml(container.innerHTML);
 
     const fragment = document.createDocumentFragment();
     while(container.firstChild) fragment.append(container.firstChild);
-    if(!fragment.childNodes.length) return;
+    if(!fragment.childNodes.length) {
+      if(unavailableImageCount) {
+        message(imageErrors[0]?.message ||
+          "Some copied images were unavailable. Use Copy image on the original, or choose the file with the Image button.");
+      }
+      return;
+    }
 
     const prospectiveContent = document.createElement("div");
     prospectiveContent.innerHTML = editor.innerHTML;
     prospectiveContent.append(fragment.cloneNode(true));
-    if(new Blob([prospectiveContent.innerHTML]).size>700000)
+    if(new Blob([prospectiveContent.innerHTML]).size>MAX_NOTE_CONTENT_SIZE)
       throw new Error("This note has reached its paste size limit. Remove an image or shorten the note.");
 
     restoreNoteSelection(editor);
@@ -1837,6 +1997,10 @@ window.handleNotePaste = async function(event) {
       selection.addRange(range);
       noteSelectionRange = range.cloneRange();
     }
+    if(unavailableImageCount) {
+      message(imageErrors[0]?.message ||
+        "Some copied images were unavailable. Use Copy image on the original, or choose the file with the Image button.");
+    }
   } catch(error) {
     console.error("Pasting formatted note content failed:",error);
     message(error.message || "Could not paste this content.");
@@ -1850,7 +2014,7 @@ window.saveNote = function() {
   if(!title) return message("Note ka title daalein.");
   if(!notePlainText(content) && !/<img\b/i.test(content))
     return message("Note mein kuch content daalein.");
-  if(new Blob([content]).size>700000)
+  if(new Blob([content]).size>MAX_NOTE_CONTENT_SIZE)
     return message("This note is too large to sync. Remove an image or shorten the note.");
 
   const timestamp = Date.now();
@@ -1981,6 +2145,7 @@ function addPage() {
     <label>Source / year</label><input id="qSource" value="${esc(q.src)}" placeholder="Bihar STET 2025">
     <label>My notes</label><textarea id="qNotes" rows="2">${esc(q.note)}</textarea>
     <div class="row"><button class="pri" onclick="saveQuestion()">${old?"Update question":"Save question"}</button>
+    ${old?btn("Delete question",`deleteQuestion('${old.id}')`,"del"):""}
     ${old?btn("Cancel","go('bank')"):""}</div>
   </div>`;
 
@@ -2505,9 +2670,19 @@ window.editQuestion = id => {
   editId = id;pre = null;go("add");
 };
 window.deleteQuestion = id => confirmAction("Delete this question?",()=>{
+  if(!S.questions.some(question=>question.id===id))
+    return message("Question nahi mila. Question Bank refresh karke phir try karein.");
   markDeleted("questions",id);
   S.questions = S.questions.filter(q=>q.id!==id);
-  save();render();
+  save();
+  if(editId===id) {
+    editId = null;
+    go("bank");
+    setSync("Question deleted");
+    return;
+  }
+  render();
+  setSync("Question deleted");
 });
 
 /* ---------- PRACTICE ---------- */
