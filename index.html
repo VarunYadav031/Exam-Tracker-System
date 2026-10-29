@@ -103,6 +103,8 @@ hr{border:0;border-top:1px solid var(--bd);margin:12px 0}
 .landing-feature-copy p{margin:0;color:var(--mu);font-size:13px;line-height:1.6}
 .landing-feature-label{display:block;margin-bottom:7px;color:var(--ac);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
 .landing-footer{margin:16px 2px;padding:14px 16px;border:1px solid var(--bd);border-radius:12px;color:var(--mu);font-size:13px}
+.question-select{width:18px;height:18px;margin:0;accent-color:var(--ac);flex:0 0 auto}
+.question-bulk-actions{margin:10px 0}
 @media(max-width:700px){
   header{align-items:flex-start}
   header>.row{justify-content:flex-end;flex:1}
@@ -201,6 +203,7 @@ let expandedNotes = new Set();
 let bulkQuestions = [];
 let practice = {ids:[], index:0, picked:null};
 let filter = {exam:"", chapter:"", topic:"", status:"", q:""};
+let selectedQuestionIds = new Set();
 let revisionFilter = {exam:"", chapter:"", topic:""};
 let dialogAction = null;
 let driveAccessToken = null;
@@ -1806,11 +1809,98 @@ function clipboardImageSource(element) {
   return /^data:image\//i.test(source) ? source.replace(/\s/g,"") : source;
 }
 
+function looksLikeClipboardImageUrl(value) {
+  try {
+    const url = new URL(value);
+    if(url.protocol!=="https:") return false;
+    return /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(url.pathname) ||
+      /(?:^|[?&])purpose=inline(?:&|$)/i.test(url.search) ||
+      /images\.openai\.com$/i.test(url.hostname) ||
+      /(?:^|\/)static-rsc-/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function markdownImagesAsHtml(text) {
+  const lines = String(text||"").split(/\r?\n/);
+  const imageLink = /^\s*!?\[([^\]]*)\]\((https:\/\/[^\s)]+)(?:\s+["'][^"']*["'])?\)\s*$/;
+  const tableCells = line=>line.trim().replace(/^\||\|$/g,"")
+    .split("|").map(cell=>cell.trim());
+  const isTableSeparator = line=>tableCells(line).every(cell=>/^:?-+:?$/.test(cell));
+  const output = [];
+  let index = 0;
+  while(index<lines.length) {
+    const line = lines[index];
+    if(!line.trim()) { index++; continue; }
+
+    const imageMatch = line.match(imageLink);
+    if(imageMatch && looksLikeClipboardImageUrl(imageMatch[2])) {
+      output.push(`<p><img src="${esc(imageMatch[2])}" alt="${esc(imageMatch[1])}"></p>`);
+      index++;
+      continue;
+    }
+
+    const heading = line.match(/^\s*(#{1,3})\s+(.+?)\s*#*\s*$/);
+    if(heading) {
+      const level = heading[1].length;
+      output.push(`<h${level}>${esc(heading[2])}</h${level}>`);
+      index++;
+      continue;
+    }
+
+    if(line.includes("|") && index+1<lines.length && isTableSeparator(lines[index+1])) {
+      const header = tableCells(line);
+      index += 2;
+      const rows = [];
+      while(index<lines.length && lines[index].includes("|")) {
+        rows.push(tableCells(lines[index]));
+        index++;
+      }
+      output.push(`<table><thead><tr>${header.map(cell=>`<th>${esc(cell)}</th>`).join("")}</tr></thead><tbody>${
+        rows.map(row=>`<tr>${header.map((_,cellIndex)=>`<td>${esc(row[cellIndex]||"")}</td>`).join("")}</tr>`).join("")
+      }</tbody></table>`);
+      continue;
+    }
+
+    if(/^\s*[-*]\s+/.test(line)) {
+      const items = [];
+      while(index<lines.length && /^\s*[-*]\s+/.test(lines[index])) {
+        items.push(`<li>${esc(lines[index].replace(/^\s*[-*]\s+/,""))}</li>`);
+        index++;
+      }
+      output.push(`<ul>${items.join("")}</ul>`);
+      continue;
+    }
+
+    const paragraph = [line.trim()];
+    index++;
+    while(index<lines.length && lines[index].trim() &&
+      !/^\s*(?:#{1,3}\s+|[-*]\s+)/.test(lines[index]) &&
+      !(lines[index].includes("|") && index+1<lines.length && isTableSeparator(lines[index+1])) &&
+      !imageLink.test(lines[index])) {
+      paragraph.push(lines[index].trim());
+      index++;
+    }
+    output.push(`<p>${esc(paragraph.join(" "))}</p>`);
+  }
+  return output.join("");
+}
+
 function prepareClipboardImages(html) {
   const parsed = new DOMParser().parseFromString(html,"text/html");
   parsed.querySelectorAll("img").forEach(image=>{
     const source = clipboardImageSource(image);
     if(source) image.setAttribute("src",source);
+  });
+  parsed.querySelectorAll("a[href]").forEach(link=>{
+    const source = link.getAttribute("href")||"";
+    if(!looksLikeClipboardImageUrl(source)) return;
+    if(link.querySelector("img")) return;
+    const image = parsed.createElement("img");
+    image.setAttribute("src",source);
+    image.setAttribute("alt",link.textContent.trim()||"Pasted image");
+    link.replaceWith(image);
   });
   parsed.querySelectorAll("[style]").forEach(element=>{
     if(element.querySelector("img")) return;
@@ -1909,8 +1999,21 @@ window.handleNotePaste = async function(event) {
       : 0;
     const container = document.createElement("div");
     if(html) container.innerHTML = sanitizeNoteHtml(preparedHtml,{allowLargeImages:true});
-    else container.innerHTML = plainText.split(/\r?\n/)
-      .map(line=>`<p>${line ? esc(line) : "<br>"}</p>`).join("");
+    else container.innerHTML = markdownImagesAsHtml(plainText);
+    if(html && plainText) {
+      const markdownImages = new DOMParser().parseFromString(
+        markdownImagesAsHtml(plainText),"text/html"
+      ).querySelectorAll("img");
+      const existingSources = new Set([...container.querySelectorAll("img")]
+        .map(image=>image.getAttribute("src")));
+      markdownImages.forEach(image=>{
+        const source = image.getAttribute("src");
+        if(source && !existingSources.has(source)) {
+          container.append(image);
+          existingSources.add(source);
+        }
+      });
+    }
 
     const clipboardImages = [...container.querySelectorAll("img")];
     let unavailableImageCount = Math.max(0,sourceImageCount-clipboardImages.length);
@@ -2627,6 +2730,7 @@ function filterControls() {
 }
 window.changeFilter = (key,value) => {
   filter[key] = value;
+  selectedQuestionIds.clear();
   if(key==="exam") {
     filter.chapter="";
     filter.topic="";
@@ -2638,12 +2742,33 @@ window.changeFilter = (key,value) => {
 
 function bankPage() {
   const list = filteredQuestions();
-  let h = filterControls()+`<div class="row"><span class="mu">${list.length} questions</span>
+  const allVisibleSelected = list.length>0 && list.every(question=>
+    selectedQuestionIds.has(question.id)
+  );
+  let h = filterControls();
+  h += `<div class="card question-bulk-actions">
+    <div class="row">
+      <label class="row" style="gap:8px;color:var(--tx)">
+        <input class="question-select" type="checkbox" ${allVisibleSelected?"checked":""}
+          ${list.length?"":"disabled"} onchange="selectVisibleQuestions(this.checked)">
+        Select all ${list.length} filtered questions
+      </label>
+      <span class="mu">${selectedQuestionIds.size} selected</span>
+      <button class="del" ${selectedQuestionIds.size?"":"disabled"}
+        onclick="deleteSelectedQuestions()">Delete selected</button>
+    </div>
+  </div>
+  <div class="row"><span class="mu">${list.length} questions</span>
     ${list.length?btn("Practice these","startPractice()","pri"):""}</div>`;
 
   list.forEach(q=>{
     h += `<div class="card">
-      <b>${esc(q.q)}</b>
+      <div class="row" style="align-items:flex-start">
+        <input class="question-select" type="checkbox" aria-label="Select question"
+          ${selectedQuestionIds.has(q.id)?"checked":""}
+          onchange="toggleQuestionSelection('${q.id}',this.checked)">
+        <b style="flex:1">${esc(q.q)}</b>
+      </div>
       <div class="row" style="margin-top:8px">
         <span class="tag">${esc(questionLocation(q))}</span>
         <span class="tag">${STATUS[status(q)]}</span>
@@ -2661,6 +2786,41 @@ function bankPage() {
   return h;
 }
 
+window.toggleQuestionSelection = (id,selected) => {
+  if(selected) selectedQuestionIds.add(id);
+  else selectedQuestionIds.delete(id);
+  render();
+};
+
+window.selectVisibleQuestions = selected => {
+  filteredQuestions().forEach(question=>{
+    if(selected) selectedQuestionIds.add(question.id);
+    else selectedQuestionIds.delete(question.id);
+  });
+  render();
+};
+
+window.deleteSelectedQuestions = function() {
+  const questions = S.questions.filter(question=>selectedQuestionIds.has(question.id));
+  if(!questions.length) {
+    selectedQuestionIds.clear();
+    render();
+    return message("Pehle delete karne ke liye questions select karein.");
+  }
+  confirmAction(
+    `${questions.length} selected question${questions.length===1?"":"s"} permanently delete karein?`,
+    ()=>{
+      questions.forEach(question=>markDeleted("questions",question.id));
+      const deletedIds = new Set(questions.map(question=>question.id));
+      S.questions = S.questions.filter(question=>!deletedIds.has(question.id));
+      selectedQuestionIds.clear();
+      save();
+      render();
+      setSync(`${questions.length} question${questions.length===1?"":"s"} deleted`);
+    }
+  );
+};
+
 window.toggleBookmark = id => {
   const q = S.questions.find(q=>q.id===id);
   if(!q) return;
@@ -2674,6 +2834,7 @@ window.deleteQuestion = id => confirmAction("Delete this question?",()=>{
     return message("Question nahi mila. Question Bank refresh karke phir try karein.");
   markDeleted("questions",id);
   S.questions = S.questions.filter(q=>q.id!==id);
+  selectedQuestionIds.delete(id);
   save();
   if(editId===id) {
     editId = null;
