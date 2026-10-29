@@ -59,7 +59,7 @@ hr{border:0;border-top:1px solid var(--bd);margin:12px 0}
 .note-card-body{padding:0 18px 16px}
 .note-content{margin:6px 0 12px;white-space:normal;overflow-wrap:anywhere;line-height:1.7}
 .note-content.preview{max-height:9em;overflow:hidden;mask-image:linear-gradient(#000 78%,transparent)}
-.note-content h2,.note-content h3{margin:12px 0 6px;line-height:1.3}
+.note-content h1,.note-content h2,.note-content h3{margin:12px 0 6px;line-height:1.3}
 .note-content ul,.note-content ol{padding-left:25px}
 .note-content blockquote{margin:10px 0;padding:8px 12px;border-left:4px solid var(--ac);background:var(--bg)}
 .note-content mark{padding:1px 3px;border-radius:3px}
@@ -68,12 +68,13 @@ hr{border:0;border-top:1px solid var(--bd);margin:12px 0}
 .note-content pre{white-space:pre-wrap}
 .note-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:7px}
 .note-editor{border-color:color-mix(in srgb,var(--ac) 35%,var(--bd))}
-.note-format-toolbar{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 0;padding:8px;background:var(--bg);border:1px solid var(--bd);border-radius:10px}
+.note-format-toolbar{position:sticky;top:8px;z-index:5;display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0 0;padding:8px;background:var(--card);border:1px solid var(--bd);border-radius:10px;box-shadow:0 3px 12px #0002}
 .note-format-toolbar button{min-width:36px;padding:7px 10px;font-size:13px}
+.note-format-toolbar select{width:auto;min-width:76px;margin:0;padding:7px}
 .note-rich-editor{min-height:300px;padding:18px;margin:0 0 12px;border:1px solid var(--bd);border-radius:0 0 10px 10px;background:var(--card);outline:none;line-height:1.75;overflow-wrap:anywhere}
 .note-rich-editor:focus{border-color:var(--ac);box-shadow:0 0 0 2px color-mix(in srgb,var(--ac) 15%,transparent)}
 .note-rich-editor:empty:before{content:attr(data-placeholder);color:var(--mu);pointer-events:none}
-.note-rich-editor h2,.note-rich-editor h3{margin:12px 0 6px}
+.note-rich-editor h1,.note-rich-editor h2,.note-rich-editor h3{margin:12px 0 6px}
 .note-rich-editor ul,.note-rich-editor ol{padding-left:25px}
 .note-rich-editor blockquote{margin:10px 0;padding:8px 12px;border-left:4px solid var(--ac);background:var(--bg)}
 .note-rich-editor table{width:100%;border-collapse:collapse;margin:10px 0}
@@ -81,6 +82,7 @@ hr{border:0;border-top:1px solid var(--bd);margin:12px 0}
 .note-content img,.note-rich-editor img{display:block;max-width:100%;height:auto;margin:10px 0;border-radius:8px}
 .note-format-toolbar label{display:flex;align-items:center;gap:5px;padding:0 4px;color:var(--tx);font-size:12px}
 .note-format-toolbar input[type=color]{width:34px;height:34px;margin:0;padding:2px;cursor:pointer}
+.note-format-toolbar input:focus-visible,.note-format-toolbar select:focus-visible,.note-format-toolbar button:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 .note-empty{text-align:center;padding:34px 18px}
 @media(max-width:700px){
   header{align-items:flex-start}
@@ -225,7 +227,7 @@ const esc = value => {
 };
 
 const NOTE_TAGS = new Set([
-  "P","BR","STRONG","B","EM","I","U","H2","H3","UL","OL","LI",
+  "P","DIV","BR","STRONG","B","EM","I","U","H1","H2","H3","UL","OL","LI",
   "BLOCKQUOTE","PRE","CODE","HR","SPAN","MARK","TABLE","THEAD",
   "TBODY","TR","TH","TD","A","IMG"
 ]);
@@ -252,12 +254,17 @@ function sanitizeNoteHtml(html) {
           /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(attr.value) &&
           attr.value.length <= 250000) return;
         if(child.tagName === "IMG" && attr.name === "alt") return;
-        if(child.tagName === "SPAN" && attr.name === "style") {
+        if(attr.name === "style" &&
+          ["SPAN","P","DIV","H1","H2","H3","LI","BLOCKQUOTE"].includes(child.tagName)) {
           const safe = [];
           const color = child.style.color;
           const background = child.style.backgroundColor;
-          if(color && !/url|expression/i.test(color)) safe.push(`color:${color}`);
-          if(background && !/url|expression/i.test(background)) safe.push(`background-color:${background}`);
+          const fontSize = child.style.fontSize;
+          const textAlign = child.style.textAlign;
+          if(color && CSS.supports("color",color)) safe.push(`color:${color}`);
+          if(background && CSS.supports("background-color",background)) safe.push(`background-color:${background}`);
+          if(/^(?:[8-9]|[1-4]\d|50)px$/.test(fontSize)) safe.push(`font-size:${fontSize}`);
+          if(["left","center","right","justify"].includes(textAlign)) safe.push(`text-align:${textAlign}`);
           if(safe.length) child.setAttribute("style",safe.join(";"));
           else child.removeAttribute("style");
           return;
@@ -1299,13 +1306,36 @@ function notesPage() {
       <button type="button" title="Bold" aria-label="Bold" onmousedown="event.preventDefault()" onclick="formatNote('bold')"><strong>B</strong></button>
       <button type="button" title="Italic" aria-label="Italic" onmousedown="event.preventDefault()" onclick="formatNote('italic')"><em>I</em></button>
       <button type="button" title="Underline" aria-label="Underline" onmousedown="event.preventDefault()" onclick="formatNote('underline')"><u>U</u></button>
-      <button type="button" title="Heading" aria-label="Heading" onmousedown="event.preventDefault()" onclick="formatNote('formatBlock','h2')">H2</button>
+      <select aria-label="Text style" title="Text style" onmousedown="saveNoteSelection()" onchange="formatNote('formatBlock',this.value);this.value=''">
+        <option value="">Normal text</option>
+        <option value="p">Normal text</option>
+        <option value="h1">Title</option>
+        <option value="h2">Heading</option>
+        <option value="h3">Subheading</option>
+      </select>
+      <select aria-label="Font size" title="Font size" onmousedown="saveNoteSelection()" onchange="formatNoteFontSize(this.value);this.value=''">
+        <option value="">Size</option>
+        <option value="12px">12</option>
+        <option value="14px">14</option>
+        <option value="16px">16</option>
+        <option value="18px">18</option>
+        <option value="24px">24</option>
+        <option value="32px">32</option>
+        <option value="40px">40</option>
+      </select>
       <button type="button" title="Bulleted list" aria-label="Bulleted list" onmousedown="event.preventDefault()" onclick="formatNote('insertUnorderedList')">• List</button>
       <button type="button" title="Numbered list" aria-label="Numbered list" onmousedown="event.preventDefault()" onclick="formatNote('insertOrderedList')">1. List</button>
       <button type="button" title="Quote" aria-label="Quote" onmousedown="event.preventDefault()" onclick="formatNote('formatBlock','blockquote')">Quote</button>
+      <button type="button" title="Align left" aria-label="Align left" onmousedown="event.preventDefault()" onclick="formatNoteAlignment('left')">⇤</button>
+      <button type="button" title="Align center" aria-label="Align center" onmousedown="event.preventDefault()" onclick="formatNoteAlignment('center')">↔</button>
+      <button type="button" title="Align right" aria-label="Align right" onmousedown="event.preventDefault()" onclick="formatNoteAlignment('right')">⇥</button>
       <label title="Text color">Text <input type="color" value="#c92a2a" aria-label="Text color" onmousedown="saveNoteSelection()" onchange="formatNoteColor('foreColor',this.value)"></label>
       <label title="Highlight color">Highlight <input type="color" value="#ffe066" aria-label="Highlight color" onmousedown="saveNoteSelection()" onchange="formatNoteColor('hiliteColor',this.value)"></label>
+      <label title="Heading color">Heading <input type="color" value="#3b5bdb" aria-label="Heading color" onmousedown="saveNoteSelection()" onchange="formatNoteHeadingColor(this.value)"></label>
       <button type="button" title="Insert image" onclick="openNoteImagePicker()">🖼 Image</button>
+      <button type="button" title="Undo" aria-label="Undo" onmousedown="event.preventDefault()" onclick="formatNote('undo')">↶</button>
+      <button type="button" title="Redo" aria-label="Redo" onmousedown="event.preventDefault()" onclick="formatNote('redo')">↷</button>
+      <button type="button" title="Clear formatting" aria-label="Clear formatting" onmousedown="event.preventDefault()" onclick="formatNote('removeFormat')">Tx</button>
       <input id="noteImageInput" type="file" accept="image/jpeg,image/png,image/webp" hidden onchange="insertNoteImage(this)">
     </div>
     <div id="noteContent" class="note-rich-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Your note" data-placeholder="Write your key points, ideas, or revision notes...">${formatNoteContent(currentNote?.content||"")}</div>
@@ -1387,14 +1417,26 @@ window.editNote = function(id) {
 window.formatNote = function(command,value=null) {
   const allowed = new Set([
     "bold","italic","underline","formatBlock",
-    "insertUnorderedList","insertOrderedList"
+    "insertUnorderedList","insertOrderedList","undo","redo","removeFormat"
   ]);
   if(!allowed.has(command)) return;
+  if(command==="formatBlock" && !["p","h1","h2","h3","blockquote"].includes(value)) return;
   const editor = $("noteContent");
   if(!editor) return;
+  restoreNoteSelection(editor);
   editor.focus();
   document.execCommand(command,false,value);
+  window.saveNoteSelection();
 };
+
+function findNoteBlock(editor,node) {
+  let element = node?.nodeType===Node.ELEMENT_NODE ? node : node?.parentElement;
+  while(element && element!==editor) {
+    if(/^(P|DIV|H1|H2|H3|LI|BLOCKQUOTE)$/.test(element.tagName)) return element;
+    element = element.parentElement;
+  }
+  return null;
+}
 
 window.saveNoteSelection = function() {
   const editor = $("noteContent");
@@ -1428,6 +1470,74 @@ window.formatNoteColor = function(command,color) {
   if(!editor) return;
   restoreNoteSelection(editor);
   document.execCommand(command,false,color);
+  window.saveNoteSelection();
+};
+
+window.formatNoteHeadingColor = function(color) {
+  const editor = $("noteContent");
+  if(!editor || !CSS.supports("color",color)) return;
+  restoreNoteSelection(editor);
+  const selection = window.getSelection();
+  const block = findNoteBlock(editor,selection?.anchorNode);
+  if(block && /^H[1-3]$/.test(block.tagName)) {
+    block.style.color = color;
+  } else {
+    document.execCommand("foreColor",false,color);
+  }
+  window.saveNoteSelection();
+};
+
+window.formatNoteFontSize = function(size) {
+  if(!/^(?:12|14|16|18|24|32|40)px$/.test(size)) return;
+  const editor = $("noteContent");
+  if(!editor) return;
+  restoreNoteSelection(editor);
+  const selection = window.getSelection();
+  if(!selection?.rangeCount) return;
+  const range = selection.getRangeAt(0);
+  if(range.collapsed) {
+    const block = findNoteBlock(editor,range.startContainer);
+    if(block) block.style.fontSize = size;
+    window.saveNoteSelection();
+    return;
+  }
+
+  const fragment = range.extractContents();
+  const blocks = [...fragment.querySelectorAll("p,div,h1,h2,h3,li,blockquote")];
+  if(blocks.length) {
+    blocks.forEach(block=>block.style.fontSize=size);
+    [...fragment.children].forEach(child=>{
+      if(/^(P|DIV|H1|H2|H3|LI|BLOCKQUOTE)$/.test(child.tagName))
+        child.style.fontSize = size;
+    });
+  } else {
+    const span = document.createElement("span");
+    span.style.fontSize = size;
+    span.append(fragment);
+    fragment.append(span);
+  }
+
+  const inserted = [...fragment.childNodes];
+  range.insertNode(fragment);
+  const updatedRange = document.createRange();
+  if(inserted.length) {
+    updatedRange.setStartBefore(inserted[0]);
+    updatedRange.setEndAfter(inserted[inserted.length-1]);
+    selection.removeAllRanges();
+    selection.addRange(updatedRange);
+  }
+  window.saveNoteSelection();
+};
+
+window.formatNoteAlignment = function(alignment) {
+  if(!["left","center","right"].includes(alignment)) return;
+  const editor = $("noteContent");
+  if(!editor) return;
+  restoreNoteSelection(editor);
+  const selection = window.getSelection();
+  const block = findNoteBlock(editor,selection?.anchorNode);
+  if(block) block.style.textAlign = alignment;
+  window.saveNoteSelection();
 };
 
 window.openNoteImagePicker = function() {
