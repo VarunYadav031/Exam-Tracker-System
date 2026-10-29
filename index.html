@@ -84,6 +84,10 @@ hr{border:0;border-top:1px solid var(--bd);margin:12px 0}
 .note-format-toolbar input[type=color]{width:34px;height:34px;margin:0;padding:2px;cursor:pointer}
 .note-format-toolbar input:focus-visible,.note-format-toolbar select:focus-visible,.note-format-toolbar button:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 .note-empty{text-align:center;padding:34px 18px}
+.note-content,.note-rich-editor{zoom:var(--note-zoom,1)}
+.note-zoom-controls{display:flex;align-items:center;gap:6px;padding:5px;border:1px solid var(--bd);border-radius:10px;background:var(--card)}
+.note-zoom-controls button{min-width:36px;padding:6px 9px}
+.note-zoom-level{min-width:48px;text-align:center;font-size:12px;color:var(--mu)}
 .landing{max-width:1120px;margin:0 auto;padding:10px 0 30px}
 .landing-hero{position:relative;overflow:hidden;padding:clamp(24px,5vw,52px);border:1px solid color-mix(in srgb,var(--ac) 20%,var(--bd));border-radius:24px;background:radial-gradient(ellipse at 86% 12%,color-mix(in srgb,#a5d8ff 48%,transparent),transparent 38%),radial-gradient(ellipse at 10% 100%,color-mix(in srgb,#d0bfff 36%,transparent),transparent 42%),linear-gradient(135deg,var(--card),color-mix(in srgb,var(--ac) 7%,var(--card)));box-shadow:0 18px 50px #26346b12}
 .landing-kicker{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border:1px solid color-mix(in srgb,var(--ac) 24%,var(--bd));border-radius:999px;background:var(--card);color:var(--ac);font-size:12px;font-weight:700}
@@ -198,6 +202,7 @@ let questionTopicFocus = null;
 let noteEditId = null;
 let noteEditorOpen = false;
 let noteSelectionRange = null;
+let noteZoom = 1;
 let noteSearch = "";
 let expandedNotes = new Set();
 let bulkQuestions = [];
@@ -1472,7 +1477,7 @@ function notesPage() {
       <input id="noteImageInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/bmp" hidden onchange="insertNoteImage(this)">
     </div>
     <p class="mu">Paste text and tables from ChatGPT or other documents. If an image is missing, right-click the original and choose Copy image, or select the image file with the Image button.</p>
-    <div id="noteContent" class="note-rich-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Your note" data-placeholder="Write, format, or paste text, tables, and images here..." onpaste="handleNotePaste(event)" oninput="saveNoteSelection()">${formatNoteContent(currentNote?.content||"")}</div>
+    <div id="noteContent" class="note-rich-editor" style="--note-zoom:${noteZoom}" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Your note" data-placeholder="Write, format, or paste text, tables, and images here..." onpaste="handleNotePaste(event)" oninput="saveNoteSelection()">${formatNoteContent(currentNote?.content||"")}</div>
     <div class="row">
       <button class="pri" onclick="saveNote()">${currentNote?"Save changes":"Save note"}</button>
       <button onclick="closeNoteEditor()">Cancel</button>
@@ -1495,7 +1500,7 @@ function notesPage() {
         <div class="note-meta"><span class="mu">Updated ${new Date(note.updatedAt).toLocaleDateString()}</span></div>
       </div>
       <div class="note-card-body">
-        <div class="note-content ${expanded?"":"preview"}">${formatNoteContent(note.content)}</div>
+        <div class="note-content ${expanded?"":"preview"}" style="--note-zoom:${noteZoom}">${formatNoteContent(note.content)}</div>
         <div class="row">
           ${btn(expanded?"Minimize":"Read full note",`toggleNoteRead('${note.id}')`)}
           ${btn("Edit",`editNote('${note.id}')`)}
@@ -1507,7 +1512,15 @@ function notesPage() {
 
   return `<div class="notes-toolbar">
     <div><h2>My Notes</h2><p class="mu">Save important ideas and revisit them whenever you need.</p></div>
-    ${btn("+ New note","openNoteEditor()","pri")}
+    <div class="row">
+      <div class="note-zoom-controls" role="group" aria-label="Notes zoom controls">
+        <button type="button" aria-label="Zoom out notes" title="Zoom out" onclick="changeNoteZoom(-0.1)">A−</button>
+        <span class="note-zoom-level" aria-live="polite">${Math.round(noteZoom*100)}%</span>
+        <button type="button" aria-label="Zoom in notes" title="Zoom in" onclick="changeNoteZoom(0.1)">A+</button>
+        <button type="button" aria-label="Reset notes zoom" title="Reset zoom" onclick="resetNoteZoom()">Reset</button>
+      </div>
+      ${btn("+ New note","openNoteEditor()","pri")}
+    </div>
   </div>
   <div class="card">
     <label for="notesSearch">Find a note</label>
@@ -1529,6 +1542,25 @@ window.openNoteEditor = function() {
   noteEditorOpen = true;
   render();
   $("noteTitle").focus();
+};
+
+window.changeNoteZoom = function(amount) {
+  if(!Number.isFinite(amount)) return;
+  noteZoom = Math.min(1.6,Math.max(0.7,Math.round((noteZoom+amount)*10)/10));
+  document.querySelectorAll(".note-content,.note-rich-editor")
+    .forEach(content=>content.style.setProperty("--note-zoom",noteZoom));
+  document.querySelector(".note-zoom-level")?.replaceChildren(
+    document.createTextNode(`${Math.round(noteZoom*100)}%`)
+  );
+};
+
+window.resetNoteZoom = function() {
+  noteZoom = 1;
+  document.querySelectorAll(".note-content,.note-rich-editor")
+    .forEach(content=>content.style.setProperty("--note-zoom",noteZoom));
+  document.querySelector(".note-zoom-level")?.replaceChildren(
+    document.createTextNode("100%")
+  );
 };
 
 window.closeNoteEditor = function() {
@@ -2248,6 +2280,7 @@ function addPage() {
     <label>Source / year</label><input id="qSource" value="${esc(q.src)}" placeholder="Bihar STET 2025">
     <label>My notes</label><textarea id="qNotes" rows="2">${esc(q.note)}</textarea>
     <div class="row"><button class="pri" onclick="saveQuestion()">${old?"Update question":"Save question"}</button>
+    ${old?btn("Save changes & add another","saveQuestion(true)"):""}
     ${old?btn("Delete question",`deleteQuestion('${old.id}')`,"del"):""}
     ${old?btn("Cancel","go('bank')"):""}</div>
   </div>`;
@@ -2281,7 +2314,7 @@ function refreshTopics() {
 }
 window.refreshTopics = refreshTopics;
 
-window.saveQuestion = function() {
+window.saveQuestion = function(addAnother = false) {
   const examId = $("qExam")?.value||"";
   const chapterId = $("qChapter")?.value||"";
   const topicId = $("qTopic")?.value||"";
@@ -2313,9 +2346,14 @@ window.saveQuestion = function() {
       last:null,lastOk:false,revise:false,...data,updatedAt:Date.now()
     });
   }
-  pre = null;
+  pre = addAnother ? {examId,chapterId,topicId} : null;
   questionTopicFocus = topicId;
   save();
+  if(addAnother) {
+    go("add",true);
+    setSync("Question updated. Add another question.");
+    return;
+  }
   go("exams");
 };
 
