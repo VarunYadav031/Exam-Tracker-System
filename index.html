@@ -252,11 +252,16 @@ function sanitizeNoteHtml(html) {
         if(child.tagName === "A" && attr.name === "href" && /^https?:\/\//i.test(attr.value)) return;
         if(child.tagName === "A" && attr.name === "title") return;
         if(child.tagName === "IMG" && attr.name === "src" &&
-          /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(attr.value) &&
-          attr.value.length <= 250000) return;
+          (/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(attr.value) &&
+            attr.value.length <= 250000 || /^https:\/\//i.test(attr.value))) return;
         if(child.tagName === "IMG" && attr.name === "alt") return;
+        if(child.tagName === "TH" || child.tagName === "TD") {
+          if((attr.name === "colspan" || attr.name === "rowspan") &&
+            /^[1-9]\d?$/.test(attr.value)) return;
+          if(attr.name === "scope" && ["row","col","rowgroup","colgroup"].includes(attr.value)) return;
+        }
         if(attr.name === "style" &&
-          ["SPAN","P","DIV","H1","H2","H3","LI","BLOCKQUOTE"].includes(child.tagName)) {
+          ["SPAN","P","DIV","H1","H2","H3","LI","BLOCKQUOTE","TABLE","THEAD","TBODY","TR","TH","TD"].includes(child.tagName)) {
           const safe = [];
           const color = child.style.color;
           const background = child.style.backgroundColor;
@@ -266,6 +271,8 @@ function sanitizeNoteHtml(html) {
           if(background && CSS.supports("background-color",background)) safe.push(`background-color:${background}`);
           if(/^(?:[8-9]|[1-4]\d|50)px$/.test(fontSize)) safe.push(`font-size:${fontSize}`);
           if(["left","center","right","justify"].includes(textAlign)) safe.push(`text-align:${textAlign}`);
+          const width = child.style.width;
+          if(/^(?:\d{1,3}(?:\.\d+)?%|\d{1,4}px)$/.test(width)) safe.push(`width:${width}`);
           if(safe.length) child.setAttribute("style",safe.join(";"));
           else child.removeAttribute("style");
           return;
@@ -273,7 +280,13 @@ function sanitizeNoteHtml(html) {
         child.removeAttribute(attr.name);
       });
       if(child.tagName === "A") child.setAttribute("rel","noopener noreferrer");
-      if(child.tagName === "IMG" && !child.hasAttribute("src")) child.remove();
+      if(child.tagName === "IMG") {
+        if(!child.hasAttribute("src")) child.remove();
+        else {
+          child.setAttribute("referrerpolicy","no-referrer");
+          child.setAttribute("loading","lazy");
+        }
+      }
     });
   };
   clean(parsed.body);
@@ -1368,7 +1381,8 @@ function notesPage() {
       <button type="button" title="Clear formatting" aria-label="Clear formatting" onmousedown="event.preventDefault()" onclick="formatNote('removeFormat')">Tx</button>
       <input id="noteImageInput" type="file" accept="image/jpeg,image/png,image/webp" hidden onchange="insertNoteImage(this)">
     </div>
-    <div id="noteContent" class="note-rich-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Your note" data-placeholder="Write your key points, ideas, or revision notes...">${formatNoteContent(currentNote?.content||"")}</div>
+    <p class="mu">ChatGPT ya kisi document se formatted text, tables, aur images ko seedha yahan paste karein.</p>
+    <div id="noteContent" class="note-rich-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Your note" data-placeholder="Write, format, or paste text, tables, and images here..." onpaste="handleNotePaste(event)" oninput="saveNoteSelection()">${formatNoteContent(currentNote?.content||"")}</div>
     <div class="row">
       <button class="pri" onclick="saveNote()">${currentNote?"Save changes":"Save note"}</button>
       <button onclick="closeNoteEditor()">Cancel</button>
@@ -1575,17 +1589,11 @@ window.openNoteImagePicker = function() {
   $("noteImageInput")?.click();
 };
 
-window.insertNoteImage = async function(input) {
-  const file = input.files?.[0];
-  input.value = "";
-  if(!file) return;
+async function noteImageFileDataUrl(file) {
   if(!["image/jpeg","image/png","image/webp"].includes(file.type))
-    return message("Please choose a JPEG, PNG, or WebP image.");
+    throw new Error("Please choose a JPEG, PNG, or WebP image.");
   if(file.size > 10*1024*1024)
-    return message("Image is too large. Please choose an image under 10 MB.");
-
-  const editor = $("noteContent");
-  if(!editor) return;
+    throw new Error("Image is too large. Please choose an image under 10 MB.");
 
   let objectUrl;
   try {
@@ -1606,6 +1614,7 @@ window.insertNoteImage = async function(input) {
       context.fillRect(0,0,canvas.width,canvas.height);
       context.drawImage(image,0,0,canvas.width,canvas.height);
       blob = await new Promise(resolve=>canvas.toBlob(resolve,"image/jpeg",0.78));
+      if(!blob) throw new Error("This image could not be compressed.");
       if(blob && blob.size<=170*1024) break;
       scale *= 0.8;
     }
@@ -1618,20 +1627,37 @@ window.insertNoteImage = async function(input) {
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
+    return dataUrl;
+  } finally {
+    if(objectUrl) URL.revokeObjectURL(objectUrl);
+  }
+}
+
+window.insertNoteImage = async function(input) {
+  const file = input.files?.[0];
+  input.value = "";
+  if(!file) return;
+
+  const editor = $("noteContent");
+  if(!editor) return;
+  try {
+    const dataUrl = await noteImageFileDataUrl(file);
     if(new Blob([editor.innerHTML,dataUrl]).size>700000)
       throw new Error("This note has reached its image and text size limit. Remove an image or shorten the note.");
 
     restoreNoteSelection(editor);
-    const insertedImage = document.createElement("img");
-    insertedImage.src = dataUrl;
-    insertedImage.alt = file.name.replace(/\.[^.]+$/,"").slice(0,120);
+    const image = document.createElement("img");
+    image.src = dataUrl;
+    image.alt = file.name.replace(/\.[^.]+$/,"").slice(0,120);
+    image.setAttribute("referrerpolicy","no-referrer");
+    image.loading = "lazy";
     const selection = window.getSelection();
     if(!selection?.rangeCount) throw new Error("Click in the note where you want to insert the image.");
     const range = selection.getRangeAt(0);
     range.deleteContents();
-    range.insertNode(insertedImage);
+    range.insertNode(image);
     const lineBreak = document.createElement("br");
-    insertedImage.after(lineBreak);
+    image.after(lineBreak);
     range.setStartAfter(lineBreak);
     range.collapse(true);
     selection.removeAllRanges();
@@ -1640,8 +1666,68 @@ window.insertNoteImage = async function(input) {
   } catch(error) {
     console.error("Note image insertion failed:",error);
     message(error.message || "Could not insert this image.");
-  } finally {
-    if(objectUrl) URL.revokeObjectURL(objectUrl);
+  }
+};
+
+window.handleNotePaste = async function(event) {
+  const clipboard = event.clipboardData;
+  const editor = $("noteContent");
+  if(!clipboard || !editor) return;
+
+  const html = clipboard.getData("text/html");
+  const plainText = clipboard.getData("text/plain");
+  const imageFiles = [...clipboard.items]
+    .filter(item=>item.kind==="file" && item.type.startsWith("image/"))
+    .map(item=>item.getAsFile())
+    .filter(Boolean);
+  if(!html && !imageFiles.length) return;
+
+  event.preventDefault();
+  try {
+    const container = document.createElement("div");
+    if(html) container.innerHTML = sanitizeNoteHtml(html);
+    else container.innerHTML = plainText.split(/\r?\n/)
+      .map(line=>`<p>${line ? esc(line) : "<br>"}</p>`).join("");
+
+    if(imageFiles.length && !container.querySelector("img")) {
+      for(const file of imageFiles) {
+        const image = document.createElement("img");
+        image.src = await noteImageFileDataUrl(file);
+        image.alt = file.name.replace(/\.[^.]+$/,"").slice(0,120) || "Pasted image";
+        image.setAttribute("referrerpolicy","no-referrer");
+        image.loading = "lazy";
+        container.append(image,document.createElement("br"));
+      }
+    }
+
+    const fragment = document.createDocumentFragment();
+    while(container.firstChild) fragment.append(container.firstChild);
+    if(!fragment.childNodes.length) return;
+
+    const prospectiveContent = document.createElement("div");
+    prospectiveContent.innerHTML = editor.innerHTML;
+    prospectiveContent.append(fragment.cloneNode(true));
+    if(new Blob([prospectiveContent.innerHTML]).size>700000)
+      throw new Error("This note has reached its paste size limit. Remove an image or shorten the note.");
+
+    restoreNoteSelection(editor);
+    const selection = window.getSelection();
+    if(!selection?.rangeCount)
+      throw new Error("Click in the note where you want to paste the content.");
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
+    const insertedNodes = [...fragment.childNodes];
+    range.insertNode(fragment);
+    if(insertedNodes.length) {
+      range.setStartAfter(insertedNodes[insertedNodes.length-1]);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      noteSelectionRange = range.cloneRange();
+    }
+  } catch(error) {
+    console.error("Pasting formatted note content failed:",error);
+    message(error.message || "Could not paste this content.");
   }
 };
 
